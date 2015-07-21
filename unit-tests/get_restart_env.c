@@ -82,7 +82,7 @@ dmtcp_get_restart_env(const char *name,   // IN
        if (strncmp(start_ptr, name, namelen) == 0) {
          if ((pos = strchr(start_ptr, '='))) {
            strncpy(value, pos + 1, maxvaluelen);
-           if (strlen(pos+1) > maxvaluelen) {
+           if (strlen(pos+1) >= maxvaluelen) {
              rc = TOOLONG; // value does not fit in the user-provided value buffer
              break;
            }
