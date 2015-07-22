@@ -7,32 +7,7 @@
 #include <string.h>
 
 extern int dmtcp_protected_environ_fd();
-
-static int
-readLine(int fd, char *buf, int count)
-{
-  int i = 0;
-  char c;
-  if (fd < 0 || buf == NULL) return -1;
-#define NEWLINE '\n' // Linux, OSX
-  while (i < count) {
-    ssize_t rc = read(fd, &c, 1);
-    if (rc == 0) {
-      break;
-    } else if (rc < 0) {
-      buf[i] = '\0';
-      return -1;
-    } else {
-      buf[i++] = c;
-      if (c == NEWLINE) break;
-    }
-  }
-  buf[i] = '\0';
-  if (i >= count)
-    return -2;
-  else
-    return i;
-}
+extern int readLine(int fd, char *buf, int count);
 
 #define SUCCESS 0
 #define NOTFOUND -1
