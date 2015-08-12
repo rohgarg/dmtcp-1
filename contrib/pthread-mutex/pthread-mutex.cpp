@@ -39,13 +39,10 @@
 using namespace std;
 
 /* Globals */
-bool present = false;
-bool patched = false;
 bool isRestart = false;
 
 typedef struct {
   pthread_mutex_t* mutex;
-  bool present;
   bool patched;
   bool locked;
 } mymutex;
@@ -83,7 +80,6 @@ pthread_mutex_lock(pthread_mutex_t *mutex)
   }
   mymutex *m = new mymutex;
   m->mutex = mutex;
-  m->present = true;
   m->patched = false;
   m->locked = true;
   mutexList.push_back(m);
