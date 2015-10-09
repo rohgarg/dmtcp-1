@@ -289,9 +289,27 @@ extern "C" long syscall(long sys_num, ... )
     case SYS_clone:
     {
       typedef int (*fnc) (void*);
+#if 0
       SYSCALL_GET_ARGS_7(fnc, fn, void*, child_stack, int, flags, void*, arg,
                          pid_t*, pid, struct user_desc*, tls, pid_t*, ctid);
       ret = __clone(fn, child_stack, flags, arg, pid, tls, ctid);
+#else
+      SYSCALL_GET_ARGS_7(int, flags, void*, child_stack, int*, parent_tid,
+                         void*, new_tls, int*, child_tid, fnc, fn, void*, arg);
+
+      int fork_flags = (CLONE_CHILD_SETTID | CLONE_CHILD_CLEARTID | SIGCHLD);
+      if (flags & SIGCHLD){
+#if 0
+        ret = _real_syscall(sys_num, flags, child_stack, parent_tid, new_tls,
+                            child_tid, fn, arg);
+#else
+        ret = fork();
+#endif
+        break;
+      }
+
+      ret = clone(fn, child_stack, flags, arg, parent_tid, new_tls, child_tid);
+#endif
       break;
     }
 
