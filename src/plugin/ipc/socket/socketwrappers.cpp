@@ -58,7 +58,7 @@ extern "C" int socket(int domain, int type, int protocol)
     Connection *con;
     JTRACE("socket created") (ret) (domain) (type) (protocol);
     if ((type & 0xff) == SOCK_RAW) {
-      JASSERT(domain == AF_NETLINK) (domain) (type)
+      JWARNING(domain == AF_NETLINK) (domain) (type)
         .Text("Only Netlink Raw sockets supported");
       con = new RawSocketConnection(domain, type, protocol);
     } else {

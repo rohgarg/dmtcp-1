@@ -641,7 +641,7 @@ RawSocketConnection::RawSocketConnection(int domain, int type, int protocol)
     , SocketConnection(domain, type, protocol)
 {
   JASSERT(type == -1 ||(type & SOCK_RAW));
-  JASSERT(domain == -1 || domain == AF_NETLINK) (domain)
+  JWARNING(domain == -1 || domain == AF_NETLINK) (domain)
     .Text("Only Netlink raw socket supported");
   JTRACE("Creating Raw socket.") (id()) (domain) (type) (protocol);
 }
