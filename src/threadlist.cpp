@@ -5,9 +5,15 @@
 #include <unistd.h>
 #include <semaphore.h>
 #include <sys/resource.h>
-#include <linux/version.h>
 #include "config.h"
+#ifdef HAVE_LINUX_VERSION_H
+# include <linux/version.h>
+#endif
+#ifdef HAVE_LINUX_VERSION_H
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11) || defined(HAS_PR_SET_PTRACER)
+# include <sys/prctl.h>
+#endif
+#else
 # include <sys/prctl.h>
 #endif
 #include "threadlist.h"

@@ -24,6 +24,7 @@
 #include <unistd.h>
 #include <sys/syscall.h>
 #include <sys/time.h>
+#include <sys/mman.h>
 #include <sys/resource.h>
 #include "util.h"
 #include "syscallwrappers.h"
@@ -35,6 +36,7 @@
 #include  "../jalib/jfilesystem.h"
 
 using namespace dmtcp;
+extern char **environ;
 
 static pthread_mutex_t tblLock = PTHREAD_MUTEX_INITIALIZER;
 

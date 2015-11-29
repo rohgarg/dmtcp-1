@@ -26,7 +26,11 @@
 #include <sys/un.h>
 #include <netdb.h>
 #include <arpa/inet.h>
-#include <linux/limits.h>
+#if defined(__FreeBSD__)
+# include <limits.h>
+#else
+# include <linux/limits.h>
+#endif
 #include "dmtcp.h"
 #include "dmtcpalloc.h"
 

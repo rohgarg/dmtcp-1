@@ -29,6 +29,8 @@
 #include "coordinatorapi.h"
 #include "shareddata.h"
 #include "util.h"
+#include <fcntl.h>
+#include <unistd.h>
 
 #define BINARY_NAME "dmtcp_launch"
 
@@ -442,13 +444,15 @@ int main ( int argc, char** argv )
 
   //set up CHECKPOINT_DIR
   if(getenv(ENV_VAR_CHECKPOINT_DIR) == NULL){
-    const char* ckptDir = get_current_dir_name();
-    if(ckptDir != NULL ){
+    char ckptDir[PATH_MAX] = {0};
+    char *test = getcwd(ckptDir, PATH_MAX);
+    //const char* ckptDir = get_current_dir_name();
+    if(test != NULL ){
       //copy to private buffer
       static string _buf = ckptDir;
-      ckptDir = _buf.c_str();
+      //ckptDir = _buf.c_str();
     }else{
-      ckptDir=".";
+      ckptDir[0]='.';
     }
     setenv ( ENV_VAR_CHECKPOINT_DIR, ckptDir, 0 );
     JTRACE("setting " ENV_VAR_CHECKPOINT_DIR)(ckptDir);

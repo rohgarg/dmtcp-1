@@ -27,7 +27,9 @@
 //         use these includes.  But, then we should split up these includes
 //         among the individual *wrappers.cpp files that actually need them,
 //         and not declare every possible include in one giant .h file.
-#include <features.h>
+#ifdef HAVE_FEATURES_H
+# include <features.h>
+#endif
 #include <pthread.h>
 #include <stdio.h>
 #include <sys/types.h>
@@ -281,12 +283,14 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
     numLibcWrappers
   } LibcWrapperOffset;
 
+#if !defined(__FreeBSD__)
   union semun {
     int              val;    /* Value for SETVAL */
     struct semid_ds *buf;    /* Buffer for IPC_STAT, IPC_SET */
     unsigned short  *array;  /* Array for GETALL, SETALL */
     struct seminfo  *__buf;  /* Buffer for IPC_INFO (Linux-specific) */
   };
+#endif
 
   void _dmtcp_lock();
   void _dmtcp_unlock();
@@ -326,7 +330,9 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
   int _real_pclose(FILE *fp);
 
   pid_t _real_fork();
+#if !defined(__FreeBSD__)
   int _real_clone (int (*fn) (void *arg), void *child_stack, int flags, void *arg, int *parent_tidptr, struct user_desc *newtls, int *child_tidptr);
+#endif
 
   int _real_open(const char *pathname, int flags, ...);
   int _real_open64(const char *pathname, int flags, ...);
@@ -365,7 +371,7 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
                       struct sigaction *oldact);
   int _real_rt_sigaction(int signum, const struct sigaction *act,
                          struct sigaction *oldact);
-#if !__GLIBC_PREREQ(2,21)
+#if defined(__FreeBSD__) //|| !__GLIBC_PREREQ(2,21)
   int _real_sigvec(int sig, const struct sigvec *vec, struct sigvec *ovec);
 #endif
 
@@ -419,10 +425,15 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
   void *_real_mmap(void *addr, size_t length, int prot, int flags,
       int fd, off_t offset);
   void *_real_mmap64(void *addr, size_t length, int prot, int flags,
-      int fd, __off64_t offset);
-#if __GLIBC_PREREQ (2,4)
+      int fd, __off_t offset);
+#if !defined(__FreeBSD__)
+# if __GLIBC_PREREQ (2,4)
   void *_real_mremap(void *old_address, size_t old_size, size_t new_size,
       int flags, ... /* void *new_address */);
+# else
+  void *_real_mremap(void *old_address, size_t old_size, size_t new_size,
+      int flags);
+# endif
 #else
   void *_real_mremap(void *old_address, size_t old_size, size_t new_size,
       int flags);
@@ -456,6 +467,9 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
   int _real_poll(struct pollfd *fds, nfds_t nfds, int timeout);
 
   int   _real_waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options);
+#if defined(__FreeBSD__)
+# define __WAIT_STATUS int*
+#endif
   pid_t _real_wait4(pid_t pid, __WAIT_STATUS status, int options,
                     struct rusage *rusage);
 

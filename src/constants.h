@@ -22,10 +22,15 @@
 #ifndef CONSTANTS_H
 #define CONSTANTS_H
 
-#include <linux/version.h>
-#include <features.h>
-
 #include "config.h"
+
+#ifdef HAVE_LINUX_VERSION_H
+# include <linux/version.h>
+#endif
+#ifdef HAVE_FEATURES_H
+# include <features.h>
+#endif
+
 
 // Turn on coordinator NameService by default. In future, we will replace the
 // logic in dmtcp_coordinator.cpp and dmtcp_worker.cpp to allow the coordinator
@@ -149,8 +154,10 @@
 // #define MIN_SIGNAL 1
 // #define MAX_SIGNAL 30
 
-#if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
-#define user_desc modify_ldt_ldt_s
+#ifdef HAVE_LINUX_VERSION_H
+# if LINUX_VERSION_CODE <= KERNEL_VERSION(2,6,9)
+#  define user_desc modify_ldt_ldt_s
+# endif
 #endif
 
 #define DMTCP_VERSION_AND_COPYRIGHT_INFO                                       \

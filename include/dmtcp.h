@@ -18,6 +18,9 @@
 #include <stdio.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#if defined(__FreeBSD__)
+# include <netinet/in.h>
+#endif
 #include <netinet/ip.h>
 
 #ifndef __USE_GNU

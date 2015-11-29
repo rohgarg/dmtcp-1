@@ -22,6 +22,7 @@
 #include "syscallwrappers.h"
 #include "threadsync.h"
 #include "../jalib/jassert.h"
+#include <fcntl.h>
 
 using namespace dmtcp;
 

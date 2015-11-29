@@ -7,7 +7,9 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/syscall.h>
-#include <linux/version.h>
+#ifdef HAVE_LINUX_VERSION_H
+# include <linux/version.h>
+#endif
 #include "syscallwrappers.h"  /* for _real_syscall */
 #include "protectedfds.h"
 #include "mtcp/restore_libc.h"

@@ -18,7 +18,9 @@
 
 #ifndef LDT_H
 #define LDT_H
-#include <linux/version.h>
+#ifdef HAVE_LINUX_VERSION_H
+# include <linux/version.h>
+#endif
 // ARM is missing asm/ldt.h in Ubuntu 11.10 (Linux 3.0, glibc-2.13)
 #if defined(__arm__) || defined(__aarch64__)
 /* Structure passed to `modify_ldt', 'set_thread_area', and 'clone' calls.
@@ -37,6 +39,7 @@ struct user_desc
   unsigned int empty:25;  /* Some variations leave this out. */
 };
 #else
+#ifdef HAVE_LINUX_VERSION_H
    // Defines struct user_desc
 # include <asm/ldt.h>
   // WARNING: /usr/include/linux/version.h often has out-of-date version.
@@ -59,6 +62,7 @@ struct user_desc
    /* struct modify_ldt_ldt_s   was defined instead of   struct user_desc   */
 #  define user_desc modify_ldt_ldt_s
 # endif
+#endif
 #endif
 
 #endif
