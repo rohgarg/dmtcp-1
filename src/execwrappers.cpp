@@ -28,6 +28,7 @@
 # undef SYS_fork
 # define SYS_fork __NR_fork
 #endif
+#include <fcntl.h>
 #include "constants.h"
 #include "uniquepid.h"
 #include "dmtcpworker.h"
@@ -51,6 +52,10 @@ using namespace dmtcp;
   const static bool dbg = true;
 #else
   const static bool dbg = false;
+#endif
+
+#if defined(__FreeBSD__)
+extern char **environ;
 #endif
 
 static bool pthread_atfork_enabled = false;

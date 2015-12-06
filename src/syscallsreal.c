@@ -19,8 +19,8 @@
  *  <http://www.gnu.org/licenses/>.                                         *
  ****************************************************************************/
 
-#define _GNU_SOURCE
-#define _XOPEN_SOURCE 500
+//#define _GNU_SOURCE
+//#define _XOPEN_SOURCE 500
 // These next two are defined in features.h based on the user macros above.
 // #define GNU_SRC
 // #define __USE_UNIX98
@@ -29,7 +29,11 @@
 //         this extra declaration.
 #define FOR_SYSCALLSREAL_C
 
-#include <malloc.h>
+#if !defined(__FreeBSD__)
+# include <malloc.h>
+#else
+# include <stdlib.h>
+#endif
 #include <pthread.h>
 #include <dlfcn.h>
 #include <stdio.h>
@@ -57,17 +61,37 @@ typedef int (*funcptr_t) ();
 typedef pid_t (*funcptr_pid_t) ();
 typedef funcptr_t (*signal_funcptr_t) ();
 
+#if !defined(__FreeBSD__)
 static pthread_mutex_t theMutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+#else
+static pthread_mutex_t theMutex = PTHREAD_MUTEX_INITIALIZER;
+# define __off64_t __off_t
+#endif
 
 // gettid / tkill / tgkill are not defined in libc.
 LIB_PRIVATE pid_t dmtcp_gettid() {
+
+#if !defined(__FreeBSD__)
   return _real_syscall(SYS_gettid);
+#else
+  pid_t tid;
+  //TODO: define _real_thr_self(&tid);
+  return tid;
+#endif
 }
 LIB_PRIVATE int dmtcp_tkill(int tid, int sig) {
+#if !defined(__FreeBSD__)
   return _real_syscall(SYS_tkill, tid, sig);
+#else
+  return _real_syscall(SYS_thr_kill, tid, sig);
+#endif
 }
 LIB_PRIVATE int dmtcp_tgkill(int tgid, int tid, int sig) {
+#if !defined(__FreeBSD__)
   return _real_syscall(SYS_tgkill, tgid, tid, sig);
+#else
+  return _real_syscall(SYS_thr_kill, tid, sig);
+#endif
 }
 
 // FIXME: Are these primitives (_dmtcp_lock, _dmtcp_unlock) required anymore?
@@ -77,7 +101,9 @@ void _dmtcp_unlock() { _real_pthread_mutex_unlock (&theMutex); }
 void _dmtcp_remutex_on_fork() {
   pthread_mutexattr_t attr;
   pthread_mutexattr_init(&attr);
+#if !defined(__FreeBSD__)
   pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE_NP);
+#endif
   pthread_mutex_init (&theMutex, &attr);
   pthread_mutexattr_destroy(&attr);
 }
@@ -726,11 +752,13 @@ int _real_sigaction(int signum, const struct sigaction *act, struct sigaction *o
   REAL_FUNC_PASSTHROUGH (sigaction) (signum, act, oldact);
 }
 
+#if !defined(__FreeBSD__)
 #if !__GLIBC_PREREQ(2,21)
 LIB_PRIVATE
 int _real_sigvec(int signum, const struct sigvec *vec, struct sigvec *ovec) {
   REAL_FUNC_PASSTHROUGH (sigvec) (signum, vec, ovec);
 }
+#endif
 #endif
 
 //set the mask
@@ -901,6 +929,7 @@ int _real_xstat(int vers, const char *path, struct stat *buf) {
   REAL_FUNC_PASSTHROUGH (__xstat) (vers, path, buf);
 }
 
+#if !defined(__FreeBSD__)
 LIB_PRIVATE
 int _real_xstat64(int vers, const char *path, struct stat64 *buf) {
   REAL_FUNC_PASSTHROUGH (__xstat64) (vers, path, buf);
@@ -915,18 +944,21 @@ LIB_PRIVATE
 int _real_lxstat64(int vers, const char *path, struct stat64 *buf) {
   REAL_FUNC_PASSTHROUGH (__lxstat64) (vers, path, buf);
 }
+#endif
 
 LIB_PRIVATE
 ssize_t _real_readlink(const char *path, char *buf, size_t bufsiz) {
   REAL_FUNC_PASSTHROUGH_TYPED (ssize_t, readlink) (path, buf, bufsiz);
 }
 
+#if !defined(__FreeBSD__)
 LIB_PRIVATE
 int _real_clone (int (*function) (void *), void *child_stack, int flags, void *arg, int *parent_tidptr, struct user_desc *newtls, int *child_tidptr)
 {
   REAL_FUNC_PASSTHROUGH (__clone) (function, child_stack, flags, arg,
                                       parent_tidptr, newtls, child_tidptr);
 }
+#endif
 
 LIB_PRIVATE
 int _real_pthread_tryjoin_np(pthread_t thread, void **retval) {
@@ -953,7 +985,7 @@ void _real_pthread_exit(void *retval) {
 }
 
 LIB_PRIVATE
-int _real_shmget (int key, size_t size, int shmflg) {
+int _real_shmget (key_t key, size_t size, int shmflg) {
   REAL_FUNC_PASSTHROUGH (shmget) (key, size, shmflg);
 }
 
@@ -1082,6 +1114,7 @@ void *_real_mmap64(void *addr, size_t length, int prot, int flags,
   REAL_FUNC_PASSTHROUGH_TYPED (void*,mmap64) (addr,length,prot,flags,fd,offset);
 }
 
+#if !defined(__FreeBSD__)
 #if __GLIBC_PREREQ (2,4)
 LIB_PRIVATE
 void *_real_mremap(void *old_address, size_t old_size, size_t new_size,
@@ -1105,6 +1138,7 @@ void *_real_mremap(void *old_address, size_t old_size, size_t new_size,
   REAL_FUNC_PASSTHROUGH_TYPED (void*, mremap)
     (old_address, old_size, new_size, flags);
 }
+#endif
 #endif
 
 LIB_PRIVATE

@@ -28,13 +28,17 @@
 #include  "../jalib/jconvert.h"
 #include "processinfo.h"
 #include <sys/syscall.h>
+#include <fcntl.h>
 
+
+#if !defined(__FreeBSD__)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,13) && __GLIBC_PREREQ(2,4)
 #include <sys/inotify.h>
 #endif
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,22) && __GLIBC_PREREQ(2,8)
 #include <sys/eventfd.h>
 #include <sys/signalfd.h>
+#endif
 #endif
 
 #ifdef __aarch64__
@@ -129,7 +133,7 @@ extern "C" int pipe ( int fds[2] )
   return socketpair ( AF_UNIX, SOCK_STREAM, 0, fds );
 }
 
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)) && __GLIBC_PREREQ(2,9)
+#if defined(__FreeBSD__) //|| (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)) && __GLIBC_PREREQ(2,9)
 // pipe2 appeared in Linux 2.6.27
 extern "C" int pipe2 ( int fds[2], int flags )
 {
@@ -223,7 +227,9 @@ extern "C" int waitid(idtype_t idtype, id_t id, siginfo_t *infop, int options)
 }
 #endif
 
+#ifndef __FreeBSD__
 extern "C" int __clone ( int ( *fn ) ( void *arg ), void *child_stack, int flags, void *arg, int *parent_tidptr, struct user_desc *newtls, int *child_tidptr );
+#endif
 
 #define SYSCALL_VA_START()                                              \
   va_list ap;                                                           \
@@ -277,7 +283,11 @@ extern "C" int __clone ( int ( *fn ) ( void *arg ), void *child_stack, int flags
  * XXX: DO NOT USE JTRACE/JNOTE/JASSERT in this function; even better, do not
  *      use any STL here.  (--Kapil)
  */
+#ifndef __FreeBSD__
 extern "C" long syscall(long sys_num, ... )
+#else
+extern "C" int syscall(int sys_num, ... )
+#endif
 {
   long int ret;
   va_list ap;
@@ -286,6 +296,7 @@ extern "C" long syscall(long sys_num, ... )
 
   switch ( sys_num ) {
 
+#ifndef __FreeBSD__
     case SYS_clone:
     {
       typedef int (*fnc) (void*);
@@ -294,6 +305,7 @@ extern "C" long syscall(long sys_num, ... )
       ret = __clone(fn, child_stack, flags, arg, pid, tls, ctid);
       break;
     }
+#endif
 
     case SYS_execve:
     {
@@ -326,6 +338,7 @@ extern "C" long syscall(long sys_num, ... )
       break;
     }
 
+#ifndef __FreeBSD__
     case SYS_rt_sigaction:
     {
       SYSCALL_GET_ARGS_3(int,signum,const struct sigaction*,act,struct sigaction*,oldact);
@@ -345,6 +358,7 @@ extern "C" long syscall(long sys_num, ... )
       ret = sigtimedwait(set, info, timeout);
       break;
     }
+#endif
 
 #ifdef __i386__
     case SYS_sigaction:
@@ -401,7 +415,7 @@ extern "C" long syscall(long sys_num, ... )
       ret = accept(sockfd, addr, addrlen);
       break;
     }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,28)) && __GLIBC_PREREQ(2,10)
+#if defined(__FreeBSD__) //|| ((LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,28)) && __GLIBC_PREREQ(2,10))
     case SYS_accept4:
     {
       SYSCALL_GET_ARGS_4(int,sockfd,struct sockaddr*,addr,socklen_t*,addrlen,int,flags);
@@ -430,7 +444,7 @@ extern "C" long syscall(long sys_num, ... )
       ret = pipe(fds);
       break;
     }
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)) && __GLIBC_PREREQ(2,9)
+#if defined(__FreeBSD__) //|| ((LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,27)) && __GLIBC_PREREQ(2,9))
     case SYS_pipe2:
     {
       SYSCALL_GET_ARGS_2(int*,fds,int,flags);
@@ -480,6 +494,7 @@ extern "C" long syscall(long sys_num, ... )
       ret = poll(fds, nfds, timeout);
       break;
     }
+#ifndef __FreeBSD__
     case SYS_epoll_create:
     {
       SYSCALL_GET_ARG(int,size);
@@ -538,6 +553,7 @@ extern "C" long syscall(long sys_num, ... )
       ret = inotify_init1(flags);
       break;
     }
+#endif
 #endif
 
     default:

@@ -47,9 +47,13 @@
 
 // This macro (LIBC...) is also defined in ../jalib/jassert.cpp and should
 // always be kept in sync with that.
+#if !defined(__FreeBSD__)
 #define LIBC_FILENAME "libc.so.6"
-
 #define LIBDL_FILENAME "libdl.so.2"
+#else
+# define LIBC_FILENAME "libc.so.7"
+# define LIBDL_FILENAME LIBC_FILENAME
+#endif
 #define CKPT_FILE_PREFIX "ckpt_"
 #define CKPT_FILE_SUFFIX ".dmtcp"
 #define CKPT_FILE_SUFFIX_LEN strlen(".dmtcp")

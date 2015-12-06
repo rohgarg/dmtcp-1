@@ -38,13 +38,13 @@ targetdir = $(top_builddir)
 # directory.
 VPATH = @srcdir@
 
-ifeq ($(M32),1)
-  MTCP_RESTART=mtcp_restart-32
-  # For mixed mode, 32-bit packages must be installed in the 64-bit libdir.
-  targetdir = $(top_builddir)/lib/$(PACKAGE)/32
-else
+#ifeq ($(M32),1)
+#  MTCP_RESTART=mtcp_restart-32
+#  # For mixed mode, 32-bit packages must be installed in the 64-bit libdir.
+#  targetdir = $(top_builddir)/lib/$(PACKAGE)/32
+#else
   MTCP_RESTART=mtcp_restart
-endif
+#endif
 
 # We currently use two files, procmapsarea.h and protectedfds.h, from the
 # top-level include dir.
@@ -55,23 +55,23 @@ INCLUDES = -I$(DMTCP_INCLUDE_PATH) -I$(srcdir)
 COMPILE = $(CC) $(INCLUDES) $(CPPFLAGS) $(CFLAGS) -c -o $@
 LINK = $(CC) $(CFLAGS) $(LDFLAGS) -o $@
 
-ifeq (${ARM_HOST},yes)
-  ARM_EXTRAS = $(srcdir)/syscall-arm.S
-  ARM_BINARIES = $(srcdir)/syscall-arm.o
-  CFLAGS += -DMTCP_SYS_ERRNO_ON_STACK
-endif
+#ifeq (${ARM_HOST},yes)
+#  ARM_EXTRAS = $(srcdir)/syscall-arm.S
+#  ARM_BINARIES = $(srcdir)/syscall-arm.o
+#  CFLAGS += -DMTCP_SYS_ERRNO_ON_STACK
+#endif
 
 # This can be replaced when ARM_HOST is generalized.
-ifndef BUILDING_UTIL_ARCH
-  BUILDTYPE=${shell make BUILDING_UTIL_ARCH=1 util-arch > /dev/null; \
-                    ./util-arch}
-endif
-HOST_IS_AARCH64=${shell uname -m | grep '^aarch64'}
-ifeq ($(HOST_IS_AARCH64),aarch64)
-  ARM_EXTRAS = syscall-aarch64.S
-  ARM_BINARIES = syscall-aarch64.o
-  CFLAGS += -DMTCP_SYS_ERRNO_ON_STACK
-endif
+#ifndef BUILDING_UTIL_ARCH
+#  BUILDTYPE=${shell make BUILDING_UTIL_ARCH=1 util-arch > /dev/null; \
+#                    ./util-arch}
+#endif
+#HOST_IS_AARCH64=${shell uname -m | grep '^aarch64'}
+#ifeq ($(HOST_IS_AARCH64),aarch64)
+#  ARM_EXTRAS = syscall-aarch64.S
+#  ARM_BINARIES = syscall-aarch64.o
+#  CFLAGS += -DMTCP_SYS_ERRNO_ON_STACK
+#endif
 
 HEADERS = mtcp_util.ic mtcp_sys.h mtcp_util.h ldt.h \
 	  $(srcdir)/../membarrier.h $(DMTCP_INCLUDE_PATH)/procmapsarea.h

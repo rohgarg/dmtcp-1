@@ -158,6 +158,7 @@ EXTERNC int rt_sigaction(int signum, const struct sigaction *act,
   //return _real_rt_sigaction( signum, act, oldact);
 }
 
+#if !defined(__FreeBSD__)
 #if !__GLIBC_PREREQ(2,21)
 EXTERNC int sigvec(int signum, const struct sigvec *vec, struct sigvec *ovec)
 {
@@ -166,6 +167,7 @@ EXTERNC int sigvec(int signum, const struct sigvec *vec, struct sigvec *ovec)
   }
   return _real_sigvec( signum, vec, ovec );
 }
+#endif
 #endif
 
 //set the mask

@@ -29,6 +29,9 @@
 #include <fstream>
 #include <execinfo.h>  /* For backtrace() */
 
+#include <sys/types.h>
+#include <sys/socket.h>
+
 #include "jalib.h"
 #include "jconvert.h"
 #include "jassert.h"

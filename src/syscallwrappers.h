@@ -50,6 +50,9 @@
 #ifdef FOR_SYSCALLSREAL_C
 # include <sys/msg.h>
 #endif
+#if defined(__FreeBSD__)
+# include <sys/msg.h>
+#endif
 #ifdef __cplusplus
 # include <sys/stat.h>
 #else
@@ -408,9 +411,11 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
                                  const struct timespec *abstime);
 
   int _real_xstat(int vers, const char *path, struct stat *buf);
+#if !defined(__FreeBSD__)
   int _real_xstat64(int vers, const char *path, struct stat64 *buf);
   int _real_lxstat(int vers, const char *path, struct stat *buf);
   int _real_lxstat64(int vers, const char *path, struct stat64 *buf);
+#endif
   ssize_t _real_readlink(const char *path, char *buf, size_t bufsiz);
   void * _real_dlsym (void *handle, const char *symbol);
 
@@ -473,7 +478,7 @@ LIB_PRIVATE extern __thread int thread_performing_dlopen_dlsym;
   pid_t _real_wait4(pid_t pid, __WAIT_STATUS status, int options,
                     struct rusage *rusage);
 
-  int _real_shmget (int key, size_t size, int shmflg);
+  int _real_shmget (key_t key, size_t size, int shmflg);
   void* _real_shmat (int shmid, const void *shmaddr, int shmflg);
   int _real_shmdt (const void *shmaddr);
   int _real_shmctl (int shmid, int cmd, struct shmid_ds *buf);

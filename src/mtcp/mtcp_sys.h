@@ -52,13 +52,17 @@
 #define _MTCP_SYS_H
 
 #include <stdio.h>
+#if !defined(__FreeBSD__)
 #include <asm/unistd.h>
+#endif
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/mman.h>
+#if !defined(__FreeBSD__)
 #include <linux/version.h>
+#endif
 #include <sys/syscall.h>  /* For SYS_xxx definitions needed in expansions. */
 
 // Source code is taken from:  glibc-2.5/sysdeps/generic
@@ -191,7 +195,9 @@ extern int mtcp_sys_errno;
 
 // #include <sysdeps/unix/x86_64/sysdep.h>  is not needed.
 // translate __NR_getpid to syscall # using i386 or x86_64
+#if !defined(__FreeBSD__)
 #include <asm/unistd.h>
+#endif
 
 /* getdents() fills up the buffer not with 'struct dirent's as might be
  * expected, but with custom 'struct linux_dirent's.  This structure, however,

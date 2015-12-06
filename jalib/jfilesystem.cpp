@@ -26,8 +26,12 @@
 #include <dirent.h>
 #include <algorithm>
 #include <errno.h>
+#include <errno.h>
 #include <sys/utsname.h>
 #include <sys/syscall.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+
 #include "jfilesystem.h"
 #include "jconvert.h"
 #include "jalib.h"
@@ -37,6 +41,12 @@
 // SYS_getdents not supported in aarch64.
 # undef SYS_getdents
 # define SYS_getdents SYS_getdents64
+#endif
+
+#if defined(__FreeBSD__)
+# undef O_LARGEFILE
+# undef dirent64
+# define dirent64 dirent
 #endif
 
 #define DELETED_FILE_SUFFIX " (deleted)"
@@ -255,8 +265,12 @@ jalib::StringVector jalib::Filesystem::GetProgramArgs()
 
 jalib::IntVector jalib::Filesystem::ListOpenFds()
 {
+#if !defined(__FreeBSD__)
   int fd = jalib::open ("/proc/self/fd", O_RDONLY | O_NDELAY |
                                         O_LARGEFILE | O_DIRECTORY, 0);
+#else
+  int fd = jalib::open ("/proc/self/fd", O_RDONLY | O_NDELAY | O_DIRECTORY, 0);
+#endif
   JASSERT(fd>=0);
 
   const size_t allocation = (4 * BUFSIZ < sizeof (struct dirent64)

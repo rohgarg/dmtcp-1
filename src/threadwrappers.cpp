@@ -33,6 +33,7 @@
 #include "processinfo.h"
 #include "threadlist.h"
 #include "siginfo.h"
+#include "syscallwrappers.h"
 
 using namespace dmtcp;
 
@@ -108,8 +109,13 @@ extern "C" int __clone(int (*fn) (void *arg), void *child_stack, int flags,
 //    thread->stateInit(ST_CKPNTHREAD);
 //  }
 
+#ifndef __FreeBSD__
   pid_t tid = _real_clone(clone_start, child_stack, flags, thread,
                           ptid, tls, ctid);
+#else
+  // probably replace with thr_new()
+  pid_t tid = -1;
+#endif
 
   if (tid == -1) {
     JTRACE("Clone call failed")(JASSERT_ERRNO);

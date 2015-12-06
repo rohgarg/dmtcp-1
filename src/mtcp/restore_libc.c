@@ -23,9 +23,11 @@
 #include <errno.h>
 #include <sys/syscall.h>
 #include <sys/resource.h>
-#include <sys/personality.h>
-#include <linux/version.h>
-#include <gnu/libc-version.h>
+#if !defined(__FreeBSD__)
+# include <sys/personality.h>
+# include <linux/version.h>
+# include <gnu/libc-version.h>
+#endif
 #include "mtcp_sys.h"
 #include "restore_libc.h"
 #include "tlsutil.h"
@@ -76,8 +78,10 @@ extern MYINFO_GS_T myinfo_gs;
  *       to accommodate this.                                    -- KAPIL
  */
 
+#if !defined(__FreeBSD__)
 #if !__GLIBC_PREREQ (2,1)
 # error "glibc version too old"
+#endif
 #endif
 
 // NOTE: tls_tid_offset, tls_pid_offset determine offset independently of
@@ -96,9 +100,11 @@ static int STATIC_TLS_TID_OFFSET()
     return offset;
 
   char *ptr;
+#if !defined(__FreeBSD__)
   long major = strtol(gnu_get_libc_version(), &ptr, 10);
-  long minor = strtol(ptr+1, NULL, 10);
   ASSERT (major == 2);
+#endif
+  long minor = strtol(ptr+1, NULL, 10);
 
   if (minor >= 11) {
 #ifdef __x86_64__
@@ -165,8 +171,10 @@ int TLSInfo_GetTidOffset(void)
      * Try to find at what offset that bit patttern occurs in struct pthread.
      */
     char * tmp;
+#if !defined(__FreeBSD__)
     tid_pid.tid = mtcp_sys_getpid();
     tid_pid.pid = mtcp_sys_getpid();
+#endif
     /* Get entry number of current thread descriptor from its segment register:
      * Segment register / 8 is the entry_number for the "thread area", which
      * is of type 'struct user_desc'.   The base_addr field of that struct
@@ -288,6 +296,7 @@ tls_set_thread_area(void *uinfo, MYINFO_GS_T dummy)
 
 static void* get_tls_base_addr()
 {
+#if !defined(__FreeBSD__)
   struct user_desc gdtentrytls;
 
   gdtentrytls.entry_number = get_tls_segreg() / 8;
@@ -296,6 +305,9 @@ static void* get_tls_base_addr()
     _exit(0);
   }
   return (void *)(*(unsigned long *)&(gdtentrytls.base_addr));
+#else
+  return NULL;
+#endif
 }
 
 // Returns value for AT_SYSINFO in kernel's auxv
@@ -305,6 +317,7 @@ static void* get_tls_base_addr()
 extern char **environ;
 static void * get_at_sysinfo()
 {
+#if !defined(__FreeBSD__)
   void **stack;
   int i;
   ELF_AUXV_T *auxv;
@@ -365,6 +378,7 @@ static void * get_at_sysinfo()
       return (void *)auxv->a_un.a_val;
     }
   }
+#endif
   return NULL;  /* Couldn't find AT_SYSINFO */
 }
 
@@ -447,8 +461,10 @@ void TLSInfo_VerifyPidTid(pid_t pid, pid_t tid)
   tls_tid = *(pid_t *) (addr + TLSInfo_GetTidOffset());
 
   if ((tls_pid != pid) || (tls_tid != tid)) {
+#if !defined(__FreeBSD__)
     PRINTF("ERROR: getpid(%d), tls pid(%d), and tls tid(%d) must all match\n",
            (int)mtcp_sys_getpid(), tls_pid, tls_tid);
+#endif
     _exit(0);
   }
 }
@@ -457,7 +473,9 @@ void TLSInfo_UpdatePid()
 {
   pid_t  *tls_pid = (pid_t *) ((char*)get_tls_base_addr() +
                                TLSInfo_GetPidOffset());
+#if !defined(__FreeBSD__)
   *tls_pid = mtcp_sys_getpid();
+#endif
 }
 
 /*****************************************************************************
@@ -480,6 +498,7 @@ void TLSInfo_SaveTLSState (ThreadTLSInfo *tlsInfo)
   // Follow x86_64 for arm.
 #endif
 
+#if !defined(__FreeBSD__)
   memset (tlsInfo->gdtentrytls, 0, sizeof tlsInfo->gdtentrytls);
 
 /* FIXME:  IF %fs IS NOT READ into tlsInfo->fs AT BEGINNING OF THIS
@@ -492,6 +511,7 @@ void TLSInfo_SaveTLSState (ThreadTLSInfo *tlsInfo)
     PRINTF("Error saving GDT TLS entry: %d\n", errno);
     _exit(0);
   }
+#endif
   //PRINTF("TLSINFO base_addr: %p \n\n", tlsInfo->gdtentrytls[0].base_addr);
 }
 
@@ -514,6 +534,7 @@ void TLSInfo_RestoreTLSState(ThreadTLSInfo *tlsInfo)
   /* Patch 'struct user_desc' (gdtentrytls) of glibc to contain the
    * the new pid and tid.
    */
+#if !defined(__FreeBSD__)
   *(pid_t *)(*(unsigned long *)&(tlsInfo->gdtentrytls[0].base_addr)
              + TLSInfo_GetPidOffset()) = mtcp_sys_getpid();
   if (mtcp_sys_kernel_gettid() == mtcp_sys_getpid()) {
@@ -527,6 +548,7 @@ void TLSInfo_RestoreTLSState(ThreadTLSInfo *tlsInfo)
     PRINTF("Error restoring GDT TLS entry: %d\n", errno);
     mtcp_abort();
   }
+#endif
 
   /* Finally, if this is i386, we need to set %gs to refer to the segment
    * descriptor that we're using above.  We restore the original pointer.

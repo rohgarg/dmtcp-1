@@ -23,15 +23,15 @@
 #endif
 #include <netinet/ip.h>
 
-#ifndef __USE_GNU
-# define __USE_GNU_NOT_SET
-# define __USE_GNU
-#endif
+//#ifndef __USE_GNU
+//# define __USE_GNU_NOT_SET
+//# define __USE_GNU
+//#endif
 #include <dlfcn.h>  /* for NEXT_FNC() */
-#ifdef __USE_GNU_NOT_SET
-# undef __USE_GNU_NOT_SET
-# undef __USE_GNU
-#endif
+//#ifdef __USE_GNU_NOT_SET
+//# undef __USE_GNU_NOT_SET
+//# undef __USE_GNU
+//#endif
 
 #ifndef EXTERNC
 # ifdef __cplusplus

@@ -33,7 +33,9 @@ typedef unsigned long int segreg_t;
 
 typedef struct _ThreadTLSInfo {
   segreg_t fs, gs;  // thread local storage pointers
+#if !defined(__FreeBSD__)
   struct user_desc gdtentrytls[1];
+#endif
 } ThreadTLSInfo;
 
 #define MTCP_SIGNATURE "MTCP_HEADER_v2.2\n"

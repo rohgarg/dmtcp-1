@@ -51,8 +51,10 @@ void pidVirt_pthread_atfork_child() __attribute__((weak));
 extern void *__dso_handle __attribute__ ((__weak__,
 					  __visibility__ ("hidden")));
 
+#if !defined(__FreeBSD__)
 EXTERNC int __register_atfork(void (*prepare)(void), void (*parent)(void),
                               void (*child)(void), void *dso_handle);
+#endif
 
 EXTERNC void *ibv_get_device_list(void *) __attribute__((weak));
 
@@ -170,9 +172,11 @@ extern "C" void dmtcp_prepare_wrappers(void)
      * To fix it, we use __register_atfork and use the __dso_handle provided by
      * the gcc compiler.
      */
+#if !defined(__FreeBSD__)
     JASSERT(__register_atfork(NULL, NULL,
                            pidVirt_pthread_atfork_child,
                            __dso_handle) == 0);
+#endif
 
     JASSERT(pthread_atfork(pthread_atfork_prepare,
                            pthread_atfork_parent,

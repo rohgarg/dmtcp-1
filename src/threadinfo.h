@@ -32,8 +32,13 @@ extern "C"
 {
 #endif
 
+#if !defined(__FreeBSD__)
 #define GETTID() (pid_t)_real_syscall(SYS_gettid)
 #define TGKILL(pid,tid,sig) _real_syscall(SYS_tgkill, pid, tid, sig)
+#else
+#define GETTID() (pid_t)_real_syscall(SYS_thr_self)
+#define TGKILL(pid,tid,sig) _real_syscall(SYS_thr_kill, tid, sig)
+#endif
 
 pid_t dmtcp_get_real_tid() __attribute((weak));
 pid_t dmtcp_get_real_pid() __attribute((weak));

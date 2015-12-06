@@ -23,6 +23,7 @@
 #include "syscallwrappers.h"
 #include "../jalib/jassert.h"
 
+#if !defined(__FreeBSD__)
 static trampoline_info_t sbrk_trampoline_info;
 
 /* All calls by glibc to extend or shrink the heap go through __sbrk(). On
@@ -66,3 +67,4 @@ void _dmtcp_setup_trampolines()
   dmtcp_setup_trampoline("sbrk", (void*) &sbrk_trampoline,
                          &sbrk_trampoline_info);
 }
+#endif

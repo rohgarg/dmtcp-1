@@ -26,12 +26,26 @@
  * then call execwrappers.cpp:_real_system().
  */
 #include <errno.h>
+#include <signal.h>
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 
 #define  SHELL_PATH  "/bin/sh"  /* Path of the shell.  */
 #define  SHELL_NAME  "sh"    /* Name to give it.  */
+
+#if defined(__FreeBSD__)
+extern char **environ;
+/* Evaluate EXPRESSION, and repeat as long as it returns -1 with `errno'
+   set to EINTR.  */
+
+# define TEMP_FAILURE_RETRY(expression) \
+  (__extension__                                                              \
+    ({ long int __result;                                                     \
+       do __result = (long int) (expression);                                 \
+       while (__result == -1L && errno == EINTR);                             \
+       __result; }))
+#endif
 
 /* Execute LINE as a shell command, returning its status.  */
 __attribute__ ((visibility ("hidden")))
@@ -88,7 +102,11 @@ out:
     (void) sigprocmask (SIG_SETMASK, &omask, (sigset_t *) NULL);
 
     /* Exec the shell.  */
+#if !defined(__FreeBSD__)
     (void) execve (SHELL_PATH, (char *const *) new_argv, __environ);
+#else
+    (void) execve (SHELL_PATH, (char *const *) new_argv, environ);
+#endif
     _exit (127);
   } else if (pid < (pid_t) 0) {
     /* The fork failed.  */

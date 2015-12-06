@@ -369,9 +369,13 @@ void ProcessInfo::restoreHeap()
     size_t oldsize = _savedBrk - _savedHeapStart;
     size_t newsize = curBrk - _savedHeapStart;
 
+#if !defined(__FreeBSD__)
     JASSERT(mremap((void*) _savedHeapStart, oldsize, newsize, 0) != NULL)
       (_savedBrk) (curBrk)
       .Text("mremap failed to map area between saved break and current break");
+#else
+   //TODO: Replace with munmap() and mmap()
+#endif
   } else if (curBrk < _savedBrk) {
     if (brk((void*)_savedBrk) != 0) {
       JNOTE("Failed to restore area between saved_break and curr_break.")

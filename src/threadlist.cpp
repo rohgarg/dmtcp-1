@@ -14,7 +14,10 @@
 # include <sys/prctl.h>
 #endif
 #else
-# include <sys/prctl.h>
+# if defined(__FreeBSD__)
+#  include <sys/types.h>
+#  include <libutil.h>
+# endif
 #endif
 #include "threadlist.h"
 #include "siginfo.h"
@@ -317,13 +320,17 @@ static void *checkpointhread (void *dummy)
      * session leaders.
      * Similarly, SIGCANCEL/SIGTIMER is undocumented, but used by glibc.
      */
+#if !defined(__FreeBSD__)
 #define SIGSETXID (__SIGRTMIN + 1)
 #define SIGCANCEL (__SIGRTMIN) /* aka SIGTIMER */
+#endif
     sigset_t set;
 
     sigfillset(&set);
+#if !defined(__FreeBSD__)
     sigdelset(&set, SIGSETXID);
     sigdelset(&set, SIGCANCEL);
+#endif
 
     JASSERT(pthread_sigmask(SIG_SETMASK, &set, NULL) == 0);
   }
@@ -545,9 +552,13 @@ void stopthisthread (int signum)
   // make sure we don't get called twice for same thread
   if (Thread_UpdateState(curThread, ST_SUSPINPROG, ST_SIGNALED)) {
 
+#if !defined(__FreeBSD__)
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11)
     JWARNING(prctl(PR_GET_NAME, curThread->procname) != -1) (JASSERT_ERRNO)
       .Text("prctl(PR_GET_NAME, ...) failed");
+#endif
+#else
+  //TODO: need something like kinfo_getproc()
 #endif
 
     Thread_SaveSigState(curThread); // save sig state (and block sig delivery)
@@ -610,7 +621,6 @@ void stopthisthread (int signum)
       /* Else restoreinprog >= 1;  This stuff executes to do a restart */
       ThreadList::waitForAllRestored(curThread);
 
-#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11)
       if (!Util::strStartsWith(curThread->procname, DMTCP_PRGNAME_PREFIX)) {
         // Add the "DMTCP:" prefix.
         string newName = string(DMTCP_PRGNAME_PREFIX) + curThread->procname;
@@ -618,9 +628,14 @@ void stopthisthread (int signum)
                 newName.c_str(),
                 sizeof(curThread->procname));
       }
+#if !defined(__FreeBSD__)
+#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,11)
       JASSERT(prctl(PR_SET_NAME, curThread->procname) != -1 || errno == EINVAL)
         (curThread->procname) (JASSERT_ERRNO)
         .Text ("prctl(PR_SET_NAME, ...) failed");
+#endif
+#else
+ //TODO: need something like: thr_set_name() or setproctitle()
 #endif
       JTRACE("User thread restored") (curThread->tid);
     }
@@ -709,7 +724,9 @@ void ThreadList::postRestart(void)
   sigfillset(&tmp);
   for (thread = activeThreads; thread != NULL; thread = thread->next) {
     struct MtcpRestartThreadArg mtcpRestartThreadArg;
+#if !defined(__FreeBSD__)
     sigandset(&sigpending_global, &tmp, &(thread->sigpending));
+#endif
     tmp = sigpending_global;
 
     if (thread == motherofall) continue;
@@ -731,6 +748,7 @@ void ThreadList::postRestart(void)
     }
 
     /* Create the thread so it can finish restoring itself. */
+#if !defined(__FreeBSD__)
     pid_t tid = _real_clone(restarthread,
                             // -128 for red zone
                             (void*)((char*)thread->saved_sp - 128),
@@ -738,6 +756,9 @@ void ThreadList::postRestart(void)
                              * later via restoreTLSState. */
                             thread->flags & ~CLONE_SETTLS,
                             clonearg, thread->ptid, NULL, thread->ctid);
+#else
+    pid_t tid = 0;
+#endif
 
     JASSERT (tid > 0); // (JASSERT_ERRNO) .Text("Error recreating thread");
     JTRACE("Thread recreated") (thread->tid) (tid);

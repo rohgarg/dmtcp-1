@@ -59,6 +59,10 @@ using namespace dmtcp;
  * should be extended to other calls as well.           -- KAPIL
  */
 // NOTE: PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP is not POSIX.
+#if defined(__FreeBSD__)
+# define PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP   PTHREAD_RWLOCK_INITIALIZER
+# define PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP              PTHREAD_MUTEX_INITIALIZER
+#endif
 static pthread_rwlock_t
   _wrapperExecutionLock = PTHREAD_RWLOCK_WRITER_NONRECURSIVE_INITIALIZER_NP;
 static pthread_rwlock_t

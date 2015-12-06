@@ -10,8 +10,10 @@
 #endif
 
 #ifdef __x86_64__
+#if !defined(__FreeBSD__)
 # include <asm/prctl.h>
 # include <sys/prctl.h>
+#endif
 /* man arch_prctl has both signatures, and prctl.h above has no declaration.
  *  int arch_prctl(int code, unsigned long addr);
  *  int arch_prctl(int code, unsigned long addr);
@@ -21,6 +23,7 @@ int arch_prctl();
 #if 1
 // These calls need to be made from both DMTCP and mtcp_restart
 /* ARE THE _GS OPERATIONS NECESSARY? */
+#if !defined(__FreeBSD__)
 #  define tls_get_thread_area(uinfo, myinfo_gs) \
     ( mtcp_inline_syscall(arch_prctl,2,ARCH_GET_FS, \
          (unsigned long int)(&(((struct user_desc *)uinfo)->base_addr))), \
@@ -31,6 +34,7 @@ int arch_prctl();
 	*(unsigned long int *)&(((struct user_desc *)uinfo)->base_addr)), \
       mtcp_inline_syscall(arch_prctl,2,ARCH_SET_GS, myinfo_gs) \
     )
+#endif
 # else
 /* ARE THE _GS OPERATIONS NECESSARY? */
 #  define tls_get_thread_area(uinfo, myinfo_gs) \

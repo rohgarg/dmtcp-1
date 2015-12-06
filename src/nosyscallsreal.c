@@ -20,8 +20,8 @@
  ****************************************************************************/
 
 
-#define _GNU_SOURCE
-#define _XOPEN_SOURCE 500
+//#define _GNU_SOURCE
+//#define _XOPEN_SOURCE 500
 // These next two are defined in features.h based on the user macros above.
 // #define GNU_SRC
 // #define __USE_UNIX98
@@ -71,7 +71,11 @@
 //// DEFINE REAL VERSIONS OF NEEDED FUNCTIONS (based on syscallsreal.cpp)
 //// (Define only functions needed for dmtcp_launch, dmtcp_restart, etc.
 
+#if !defined(__FreeBSD__)
 static pthread_mutex_t theMutex = PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP;
+#else
+static pthread_mutex_t theMutex = PTHREAD_MUTEX_INITIALIZER;
+#endif
 
 #define REAL_FUNC_PASSTHROUGH(name) return name
 
@@ -238,10 +242,12 @@ int _real_fcntl(int fd, int cmd, void *arg)
   REAL_FUNC_PASSTHROUGH (fcntl) (fd, cmd, arg);
 }
 
+#if !defined(__FreeBSD__)
 int _real_ptsname_r (int fd, char * buf, size_t buflen)
 {
   REAL_FUNC_PASSTHROUGH (ptsname_r) (fd, buf, buflen);
 }
+#endif
 
 int _real_socketpair (int d, int type, int protocol, int sv[2])
 {
@@ -286,9 +292,11 @@ pid_t _real_getpgrp(void) {
   REAL_FUNC_PASSTHROUGH_PID_T (getpgrp) ();
 }
 
+#if !defined(__FreeBSD__)
 pid_t _real_setpgrp(void) {
   REAL_FUNC_PASSTHROUGH_PID_T (setpgrp) ();
 }
+#endif
 
 pid_t _real_getpgid(pid_t pid) {
   REAL_FUNC_PASSTHROUGH_PID_T (getpgid) (pid);
@@ -376,13 +384,25 @@ long _real_syscall(long sys_num, ...) {
 }
 
 LIB_PRIVATE pid_t dmtcp_gettid() {
+#if !defined(__FreeBSD__)
   return syscall(SYS_gettid);
+#else
+  return -1;
+#endif
 }
 LIB_PRIVATE int dmtcp_tkill(int tid, int sig) {
+#if !defined(__FreeBSD__)
   return syscall(SYS_tkill, tid, sig);
+#else
+  return -1;
+#endif
 }
 LIB_PRIVATE int dmtcp_tgkill(int tgid, int tid, int sig) {
+#if !defined(__FreeBSD__)
   return syscall(SYS_tgkill, tgid, tid, sig);
+#else
+  return -1;
+#endif
 }
 
 int _real_open (const char *pathname, int flags, ...) {
@@ -413,9 +433,11 @@ FILE * _real_fopen(const char *path, const char *mode) {
   REAL_FUNC_PASSTHROUGH_TYPED (FILE *, fopen) (path, mode);
 }
 
+#if !defined(__FreeBSD__)
 FILE * _real_fopen64(const char *path, const char *mode) {
   REAL_FUNC_PASSTHROUGH_TYPED (FILE *, fopen64) (path, mode);
 }
+#endif
 
 int _real_shmget (key_t key, size_t size, int shmflg) {
   REAL_FUNC_PASSTHROUGH (shmget) (key, size, shmflg);
