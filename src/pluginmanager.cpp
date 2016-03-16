@@ -154,11 +154,11 @@ void PluginManager::logCkptResumeBarrierOverhead()
   snprintf(logFilename, sizeof(logFilename), "timings.%d.csv", getpid());
   std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
-    for (int i = 0; i < pluginManager->pluginInfos[i]->preCkptBarriers.size(); i++) {
-      logfile << pluginManager->pluginInfos[i]->preCkptBarriers[i]->toString() <<  ',' << pluginManager->pluginInfos[i]->preCkptBarriers[i]->executionTime << std::endl;
+    for (int j = 0; j < pluginManager->pluginInfos[i]->preCkptBarriers.size(); j++) {
+      logfile << pluginManager->pluginInfos[i]->preCkptBarriers[j]->toString() <<  ',' << pluginManager->pluginInfos[i]->preCkptBarriers[j]->executionTime << std::endl;
     }
-    for (int i = 0; i < pluginManager->pluginInfos[i]->resumeBarriers.size(); i++) {
-      logfile << pluginManager->pluginInfos[i]->resumeBarriers[i]->toString() <<  ',' << pluginManager->pluginInfos[i]->resumeBarriers[i]->executionTime << std::endl;
+    for (int j = 0; j < pluginManager->pluginInfos[i]->resumeBarriers.size(); j++) {
+      logfile << pluginManager->pluginInfos[i]->resumeBarriers[j]->toString() <<  ',' << pluginManager->pluginInfos[i]->resumeBarriers[j]->executionTime << std::endl;
     }
   }
 }
@@ -169,8 +169,8 @@ void PluginManager::logRestartBarrierOverhead()
   snprintf(logFilename, sizeof(logFilename), "timings.%d.csv", getpid());
   std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
-    for (int i = 0; i < pluginManager->pluginInfos[i]->restartBarriers.size(); i++) {
-      logfile << pluginManager->pluginInfos[i]->restartBarriers[i]->toString() <<  ',' << pluginManager->pluginInfos[i]->restartBarriers[i]->executionTime << std::endl;
+    for (int j = 0; j < pluginManager->pluginInfos[i]->restartBarriers.size(); j++) {
+      logfile << pluginManager->pluginInfos[i]->restartBarriers[j]->toString() <<  ',' << pluginManager->pluginInfos[i]->restartBarriers[j]->executionTime << std::endl;
     }
   }
 }
