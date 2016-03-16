@@ -148,6 +148,42 @@ void PluginManager::processResumeBarriers()
   }
 }
 
+void PluginManager::logCkptResumeBarrierOverhead()
+{
+  char logFilename[5000] = {0};
+  snprintf(logFilename, sizeof(logFilename), "timings.%d.csv", getpid());
+  std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
+  for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
+    for (int j = 0; j < pluginManager->pluginInfos[i]->preCkptBarriers.size(); j++) {
+      logfile << pluginManager->pluginInfos[i]->preCkptBarriers[j]->toString() <<  ','
+              << pluginManager->pluginInfos[i]->preCkptBarriers[j]->executionTime << ','
+              << pluginManager->pluginInfos[i]->preCkptBarriers[j]->callbackExecutionTime
+              << std::endl;
+    }
+    for (int j = 0; j < pluginManager->pluginInfos[i]->resumeBarriers.size(); j++) {
+      logfile << pluginManager->pluginInfos[i]->resumeBarriers[j]->toString() <<  ','
+              << pluginManager->pluginInfos[i]->resumeBarriers[j]->executionTime << ','
+              << pluginManager->pluginInfos[i]->resumeBarriers[j]->callbackExecutionTime
+              << std::endl;
+    }
+  }
+}
+
+void PluginManager::logRestartBarrierOverhead()
+{
+  char logFilename[5000] = {0};
+  snprintf(logFilename, sizeof(logFilename), "timings.%d.csv", getpid());
+  std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
+  for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
+    for (int j = 0; j < pluginManager->pluginInfos[i]->restartBarriers.size(); j++) {
+      logfile << pluginManager->pluginInfos[i]->restartBarriers[j]->toString() <<  ','
+              << pluginManager->pluginInfos[i]->restartBarriers[j]->executionTime << ','
+              << pluginManager->pluginInfos[i]->restartBarriers[j]->callbackExecutionTime
+              << std::endl;
+    }
+  }
+}
+
 void PluginManager::processRestartBarriers()
 {
   PluginManager::registerBarriersWithCoordinator();

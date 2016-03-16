@@ -72,6 +72,8 @@ namespace dmtcp
       const string id;
       void (*callback)();
       const string pluginName;
+      double executionTime;
+      double callbackExecutionTime;
   };
 
   static inline ostream& operator << (ostream& o, const BarrierInfo& info)

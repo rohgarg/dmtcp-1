@@ -503,6 +503,7 @@ void DmtcpWorker::postCheckpoint()
   }
 
   PluginManager::processResumeBarriers();
+  PluginManager::logCkptResumeBarrierOverhead();
 
   // Inform Coordinator of RUNNING state.
   WorkerState::setCurrentState( WorkerState::RUNNING );
@@ -515,6 +516,7 @@ void DmtcpWorker::postRestart()
   WorkerState::setCurrentState(WorkerState::RESTARTING);
 
   PluginManager::processRestartBarriers();
+  PluginManager::logRestartBarrierOverhead();
   JTRACE("got resume message after restart");
 
   // Inform Coordinator of RUNNING state.

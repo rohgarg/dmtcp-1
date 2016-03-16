@@ -19,6 +19,8 @@
  *  <http://www.gnu.org/licenses/>.                                         *
  ****************************************************************************/
 
+#include <sys/time.h>
+
 #include "barrierinfo.h"
 #include "plugininfo.h"
 #include "dmtcp.h"
@@ -108,6 +110,13 @@ void PluginInfo::processBarriers()
 
 void PluginInfo::processBarrier(BarrierInfo *barrier)
 {
+  struct timeval start, end, diff;
+
+  memset(&start, 0, sizeof(start));
+  memset(&end, 0, sizeof(end));
+  memset(&diff, 0, sizeof(diff));
+
+  JASSERT(gettimeofday(&start, NULL) == 0);
   if (dmtcp_no_coordinator()) {
     // Do nothing.
   } else if (barrier->isGlobal()) {
@@ -119,7 +128,22 @@ void PluginInfo::processBarrier(BarrierInfo *barrier)
   }
 
   JTRACE("Barrier released") (barrier->toString());
+
+  JASSERT(gettimeofday(&end, NULL) == 0);
+  timersub(&end, &start, &diff);
+  barrier->executionTime = diff.tv_sec + (diff.tv_usec/1000000.0);
+
+  memset(&start, 0, sizeof(start));
+  memset(&end, 0, sizeof(end));
+  memset(&diff, 0, sizeof(diff));
+
+  JASSERT(gettimeofday(&start, NULL) == 0);
+
   barrier->callback();
+
+  JASSERT(gettimeofday(&end, NULL) == 0);
+  timersub(&end, &start, &diff);
+  barrier->callbackExecutionTime = diff.tv_sec + (diff.tv_usec/1000000.0);
 }
 
 }
