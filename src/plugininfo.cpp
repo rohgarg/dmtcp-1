@@ -108,6 +108,10 @@ void PluginInfo::processBarriers()
 void PluginInfo::processBarrier(BarrierInfo *barrier)
 {
   struct timeval start, end;
+
+  memset(&start, 0, sizeof(start));
+  memset(&end, 0, sizeof(end));
+
   JASSERT(gettimeofday(&start, NULL) == 0);
   if (dmtcp_no_coordinator()) {
     // Do nothing.
@@ -120,12 +124,25 @@ void PluginInfo::processBarrier(BarrierInfo *barrier)
   }
 
   JTRACE("Barrier released") (barrier->toString());
-  barrier->callback();
+
   JASSERT(gettimeofday(&end, NULL) == 0);
   double sec = start.tv_sec - end.tv_sec;
   sec += ( start.tv_usec-end.tv_usec ) /1000000.0;
   if ( sec < 0 ) sec *= -1;
   barrier->executionTime = sec;
+
+  memset(&start, 0, sizeof(start));
+  memset(&end, 0, sizeof(end));
+
+  JASSERT(gettimeofday(&start, NULL) == 0);
+
+  barrier->callback();
+
+  JASSERT(gettimeofday(&end, NULL) == 0);
+  sec = start.tv_sec - end.tv_sec;
+  sec += ( start.tv_usec-end.tv_usec ) /1000000.0;
+  if ( sec < 0 ) sec *= -1;
+  barrier->callbackExecutionTime = sec;
 }
 
 }
