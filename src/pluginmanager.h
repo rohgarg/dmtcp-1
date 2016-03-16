@@ -47,6 +47,8 @@ namespace dmtcp
       static void processResumeBarriers();
       static void processRestartBarriers();
       static void eventHook(DmtcpEvent_t event, DmtcpEventData_t *data);
+      static void logCkptResumeBarrierOverhead();
+      static void logRestartBarrierOverhead();
 
     private:
       void initializePlugins();
