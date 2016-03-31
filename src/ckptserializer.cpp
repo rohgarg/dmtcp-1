@@ -51,6 +51,14 @@
 #endif
 #define _real_waitpid(a,b,c) _real_syscall(SYS_wait4,a,b,c,NULL)
 
+#ifdef USE_LM
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <arpa/inet.h>
+# define _real_socket  NEXT_FNC(socket)
+# define _real_connect NEXT_FNC(connect)
+#endif
+
 using namespace dmtcp;
 
 #define FORKED_CKPT_FAILED 0
@@ -198,14 +206,40 @@ static int perform_open_ckpt_image_fd(const char *tempCkptFilename,
                                       int *fdCkptFileOnDisk)
 {
   *use_compression = false;  /* default value */
+  int fd = -1;
+
+#ifdef USE_LM
+# define LM_DEFAULT_ENV_PORT "LM_DEST_PORT"
+# define LM_DEFAULT_ENV_IP   "LM_DEST_IP"
+# define LM_DEFAULT_PORT 5000
+# define LM_DEFAULT_IP   "127.0.0.1"
+
+  int port = getenv(LM_DEFAULT_ENV_PORT) ? atoi(getenv(LM_DEFAULT_ENV_PORT)) : LM_DEFAULT_PORT;
+  const char *destIP = getenv(LM_DEFAULT_ENV_IP) ? getenv(LM_DEFAULT_ENV_IP) : LM_DEFAULT_IP;
+  struct sockaddr_in sockaddr;
+
+  memset(&sockaddr, 0, sizeof(sockaddr));
+  sockaddr.sin_family = AF_INET;
+  inet_pton(AF_INET, destIP, &sockaddr.sin_addr);
+  sockaddr.sin_port = htons(port);
+
+  fd = _real_socket(AF_INET, SOCK_STREAM, 0); /* create connection socket */
+  JASSERT((fd = _real_socket(AF_INET, SOCK_STREAM, 0)) > 0)(JASSERT_ERRNO);
+  JASSERT(_real_connect(fd, (struct sockaddr *)&sockaddr, sizeof(sockaddr)) == 0)(JASSERT_ERRNO);
+  *fdCkptFileOnDisk = fd; /* if use_compression, fd will be reset to pipe */
+  return fd;
+
+#else
 
   /* 1. Open fd to checkpoint image on disk */
   /* Create temp checkpoint file and write magic number to it */
   int flags = O_CREAT | O_TRUNC | O_WRONLY;
-  int fd = _real_open(tempCkptFilename, flags, 0600);
+  fd = _real_open(tempCkptFilename, flags, 0600);
   *fdCkptFileOnDisk = fd; /* if use_compression, fd will be reset to pipe */
   JASSERT(fd != -1) (tempCkptFilename) (JASSERT_ERRNO)
     .Text ("Error creating file.");
+
+#endif
 
 #ifdef FAST_RST_VIA_MMAP
   return fd;
@@ -435,11 +469,13 @@ void CkptSerializer::writeCkptImage(void *mtcpHdr, size_t mtcpHdrLen)
       .Text("(compression): error closing checkpoint file.");
   }
 
+#ifndef USE_LM
   /* Now that temp checkpoint file is complete, rename it over old permanent
    * checkpoint file.  Uses rename() syscall, which doesn't change i-nodes.
    * So, gzip process can continue to write to file even after renaming.
    */
   JASSERT(rename(tempCkptFilename.c_str(), ckptFilename.c_str()) == 0);
+#endif
 
   if (forked_ckpt_status == FORKED_CKPT_CHILD) {
     // Use _exit() instead of exit() to avoid popping atexit() handlers

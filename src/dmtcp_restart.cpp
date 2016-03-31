@@ -31,6 +31,12 @@
 # include <sys/prctl.h>
 #endif
 
+#ifdef USE_LM
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <arpa/inet.h>
+#endif
+
 #include "constants.h"
 #include "coordinatorapi.h"
 #include "util.h"
@@ -130,6 +136,13 @@ class RestoreTarget
       JASSERT(jalib::Filesystem::FileExists(_path)) (_path)
         .Text ( "checkpoint file missing" );
 
+      _fd = readCkptHeader(_path, &_pInfo);
+      JTRACE("restore target") (_path) (_pInfo.numPeers()) (_pInfo.compGroup());
+    }
+
+    RestoreTarget()
+      : _path("")
+    {
       _fd = readCkptHeader(_path, &_pInfo);
       JTRACE("restore target") (_path) (_pInfo.numPeers()) (_pInfo.compGroup());
     }
@@ -324,7 +337,7 @@ class RestoreTarget
       if (ckptDir.length() == 0) {
         // Create the ckpt-dir fd so that the restarted process can know about
         // the abs-path of ckpt-image.
-        string dirName = jalib::Filesystem::DirName(_path);
+        string dirName = jalib::Filesystem::DirName(_path == "" ? jalib::Filesystem::GetCWD() : _path);
         int dirfd = open(dirName.c_str(), O_RDONLY);
         JASSERT(dirfd != -1) (JASSERT_ERRNO);
         if (dirfd != PROTECTED_CKPT_DIR_FD) {
@@ -476,6 +489,33 @@ static int open_ckpt_to_read(const char *filename)
     NULL
   };
 #endif
+#ifdef USE_LM
+# define LM_DEFAULT_ENV_PORT "LM_DEST_PORT"
+# define LM_DEFAULT_ENV_IP   "LM_DEST_IP"
+# define LM_DEFAULT_PORT 5000
+
+  int port = getenv(LM_DEFAULT_ENV_PORT) ? atoi(getenv(LM_DEFAULT_ENV_PORT)) : LM_DEFAULT_PORT;
+  struct sockaddr_in sockaddr;
+  int listener_sd, rc;
+
+  memset(&sockaddr, 0, sizeof(sockaddr));
+  sockaddr.sin_family = AF_INET;
+  sockaddr.sin_addr.s_addr = htonl(INADDR_ANY);
+  sockaddr.sin_port = htons(port);
+
+  listener_sd = socket(AF_INET, SOCK_STREAM, 0);
+  do {
+    rc = bind(listener_sd, (struct sockaddr *)&sockaddr, sizeof(sockaddr));
+  } while (rc == -1 && errno == EADDRINUSE);
+  if (rc == -1)
+    perror("bind");
+  listen(listener_sd, 5);
+
+  int sd;
+  sd = accept(listener_sd, NULL, NULL);
+  JASSERT(sd > 0) (JASSERT_ERRNO);
+  return sd;
+#endif
   pid_t cpid;
 
   fc = first_char(filename);
@@ -566,13 +606,19 @@ int openCkptFileToRead(const string& path)
   // The rest of this function is for compatibility with original definition.
   JASSERT(fd >= 0) (path) .Text("Failed to open file.");
   const int len = strlen(DMTCP_FILE_HEADER);
+#ifdef USE_LM
+  JASSERT(Util::readAll(fd, buf, len) == len)(path) .Text("read() failed");
+#else
   JASSERT(read(fd, buf, len) == len)(path) .Text("read() failed");
+#endif
   if (strncmp(buf, DMTCP_FILE_HEADER, len) == 0) {
     JTRACE("opened checkpoint file [uncompressed]")(path);
   } else {
+#ifndef USE_LM
     close(fd);
     fd = open_ckpt_to_read(path.c_str()); /* Re-open from beginning */
     JASSERT(fd >= 0) (path) .Text("Failed to open file.");
+#endif
   }
   return fd;
 }
@@ -643,11 +689,13 @@ int main(int argc, char** argv)
     ckptdir_arg = getenv(ENV_VAR_CHECKPOINT_DIR);
   }
 
+#ifndef USE_LM
   if (argc == 1) {
     printf("%s", DMTCP_VERSION_AND_COPYRIGHT_INFO);
     printf("(For help: %s --help)\n\n", argv[0]);
     return DMTCP_FAIL_RC;
   }
+#endif
 
   //process args
   shift;
@@ -671,7 +719,7 @@ int main(int argc, char** argv)
     } else if (s == "-i" || s == "--interval") {
       setenv(ENV_VAR_CKPT_INTR, argv[1], 1);
       shift; shift;
-    } else if (argv[0][0] == '-' && argv[0][1] == 'i' &&
+    } else if (argc > 1 && argv[0][0] == '-' && argv[0][1] == 'i' &&
                isdigit(argv[0][2])) { // else if -i5, for example
       setenv(ENV_VAR_CKPT_INTR, argv[0]+2, 1);
       shift;
@@ -681,7 +729,7 @@ int main(int argc, char** argv)
     } else if (argc>1 && (s == "-p" || s == "--coord-port" || s == "--port")) {
       setenv(ENV_VAR_NAME_PORT, argv[1], 1);
       shift; shift;
-    } else if (argv[0][0] == '-' && argv[0][1] == 'p' &&
+    } else if (argc > 1 && argv[0][0] == '-' && argv[0][1] == 'p' &&
                isdigit(argv[0][2])) { // else if -p0, for example
       setenv(ENV_VAR_NAME_PORT, argv[0]+2, 1);
       shift;
@@ -701,8 +749,12 @@ int main(int argc, char** argv)
       shift;
     } else if ((s.length() > 2 && s.substr(0, 2) == "--") ||
                (s.length() > 1 && s.substr(0, 1) == "-")) {
+#ifndef USE_LM
       printf("Invalid Argument\n%s", theUsage);
       return DMTCP_FAIL_RC;
+#else
+      break;
+#endif
     } else if (argc > 1 && s == "--") {
       shift;
       break;
@@ -732,6 +784,7 @@ int main(int argc, char** argv)
   JTRACE("New dmtcp_restart process; _argc_ ckpt images") (argc);
 
   bool doAbort = false;
+#ifndef USE_LM
   for (; argc > 0; shift) {
     string restorename(argv[0]);
     struct stat buf;
@@ -764,8 +817,11 @@ int main(int argc, char** argv)
 
     JTRACE("Will restart ckpt image") (argv[0]);
     RestoreTarget *t = new RestoreTarget(argv[0]);
-    targets[t->upid()] = t;
   }
+#else
+  RestoreTarget *tlm = new RestoreTarget();
+  targets[tlm->upid()] = tlm;
+#endif
 
   // Prepare list of independent process tree roots
   RestoreTargetMap::iterator i;
