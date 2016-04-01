@@ -764,7 +764,7 @@ void DmtcpCoordinator::onConnect()
     return;
   }
   if (hello_remote.type == DMT_NAME_SERVICE_QUERY) {
-    JASSERT(false);
+    JASSERT(!childCoordinator);
     JASSERT(hello_remote.extraBytes > 0) (hello_remote.extraBytes);
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
@@ -776,7 +776,7 @@ void DmtcpCoordinator::onConnect()
     return;
   }
   if (hello_remote.type == DMT_REGISTER_NAME_SERVICE_DATA) {
-    JASSERT(false);
+    JASSERT(!childCoordinator);
     JASSERT(hello_remote.extraBytes > 0) (hello_remote.extraBytes);
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
@@ -788,7 +788,7 @@ void DmtcpCoordinator::onConnect()
     return;
   }
   if (hello_remote.type == DMT_REGISTER_NAME_SERVICE_DATA_SYNC) {
-    JASSERT(false);
+    JASSERT(!childCoordinator);
     JASSERT(hello_remote.extraBytes > 0) (hello_remote.extraBytes);
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
@@ -804,7 +804,6 @@ void DmtcpCoordinator::onConnect()
   }
 
   if (hello_remote.type == DMT_USER_CMD) {
-    JASSERT(false);
     // TODO(kapil): Update ckpt interval only if a valid one was supplied to
     // dmtcp_command.
     updateCheckpointInterval(hello_remote.theCheckpointInterval);
