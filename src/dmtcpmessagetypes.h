@@ -145,6 +145,9 @@ namespace dmtcp
     uint32_t    keyLen;
     uint32_t    valLen;
 
+    char        progname[32];
+    char        hostname[32];
+
     uint32_t numPeers;
     uint32_t isRunning;
     uint32_t coordCmd;

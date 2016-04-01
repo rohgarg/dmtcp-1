@@ -33,7 +33,6 @@
 #include "syscallwrappers.h"
 #include "util.h"
 #include "shareddata.h"
-#include "processinfo.h"
 #include  "../jalib/jconvert.h"
 #include  "../jalib/jfilesystem.h"
 #include "../jalib/jsocket.h"
@@ -196,8 +195,10 @@ void CoordinatorAPI::init()
 {
   JTRACE("Informing coordinator of new process") (UniquePid::ThisProcess());
 
+  string progname = jalib::Filesystem::GetProgramName();
   DmtcpMessage msg (DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
-  instance().sendMsgToCoordinator(msg, jalib::Filesystem::GetProgramName());
+  strncpy(msg.progname, progname.c_str(), sizeof(msg.progname));
+  instance().sendMsgToCoordinator(msg);
 }
 
 void CoordinatorAPI::resetOnFork(CoordinatorAPI& coordAPI)
@@ -474,13 +475,10 @@ DmtcpMessage CoordinatorAPI::sendRecvHandshake(DmtcpMessage msg,
   msg.theCheckpointInterval = getCkptInterval();
 
   string hostname = jalib::Filesystem::GetCurrentHostname();
+  strncpy(msg.hostname, hostname.c_str(), sizeof(msg.hostname));
+  strncpy(msg.progname, progname.c_str(), sizeof(msg.progname));
 
-  size_t buflen = hostname.length() + progname.length() + 2;
-  char buf[buflen];
-  strcpy(buf, hostname.c_str());
-  strcpy(&buf[hostname.length() + 1], progname.c_str());
-
-  sendMsgToCoordinator(msg, buf, buflen);
+  sendMsgToCoordinator(msg);
 
   recvMsgFromCoordinator(&msg);
   msg.assertValid();
@@ -607,11 +605,10 @@ void CoordinatorAPI::connectToCoordOnRestart(CoordinatorMode  mode,
   JTRACE("Coordinator handshake RECEIVED!!!!!");
 }
 
-void CoordinatorAPI::sendCkptFilename()
+void CoordinatorAPI::sendCkptFilename(const string& ckptFilename)
 {
   if (noCoordinator()) return;
   // Tell coordinator to record our filename in the restart script
-  string ckptFilename = ProcessInfo::instance().getCkptFilename();
   string hostname = jalib::Filesystem::GetCurrentHostname();
   JTRACE("recording filenames") (ckptFilename) (hostname);
   DmtcpMessage msg;

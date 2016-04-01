@@ -34,7 +34,7 @@ namespace dmtcp
       CoordClient(const jalib::JSocket& sock,
                   const struct sockaddr_storage *addr,
                   socklen_t len,
-                  DmtcpMessage &hello_remote,
+                  const DmtcpMessage &hello_remote,
 		  int isNSWorker = 0);
 
       jalib::JSocket &sock() { return _sock; }
@@ -53,8 +53,6 @@ namespace dmtcp
       pid_t virtualPid(void) const { return _virtualPid; }
       void virtualPid(pid_t pid) { _virtualPid = pid; }
       int isNSWorker() {return _isNSWorker;}
-
-      void readProcessInfo(DmtcpMessage& msg);
 
     private:
       UniquePid _identity;
@@ -116,6 +114,11 @@ namespace dmtcp
       pid_t getNewVirtualPid();
 
       void writeRestartScript();
+
+      void createConnectionToParentCoordinator();
+      void processParentCoordinatorMsg();
+      void ackSuspendMsg();
+
     private:
       size_t _numCkptWorkers;
       size_t _numRestartFilenames;

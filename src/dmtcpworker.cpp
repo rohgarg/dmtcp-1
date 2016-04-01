@@ -492,7 +492,8 @@ void DmtcpWorker::preCheckpoint()
 void DmtcpWorker::postCheckpoint()
 {
   WorkerState::setCurrentState(WorkerState::CHECKPOINTED);
-  CoordinatorAPI::instance().sendCkptFilename();
+  CoordinatorAPI::instance().sendCkptFilename(
+      ProcessInfo::instance().getCkptFilename());
 
   if (_exitAfterCkpt) {
     JTRACE("Asked to exit after checkpoint. Exiting!");

@@ -66,6 +66,8 @@ DmtcpMessage::DmtcpMessage ( DmtcpMessageType t /*= DMT_NULL*/ )
   memset(&compGroup, 0, sizeof(compGroup));
   memset(&ipAddr, 0, sizeof ipAddr);
   memset(nsid, 0, sizeof nsid);
+  memset(hostname, 0, sizeof(hostname));
+  memset(progname, 0, sizeof(progname));
   strncpy ( _magicBits,DMTCP_MAGIC_STRING,sizeof ( _magicBits ) );
 }
 
