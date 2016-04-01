@@ -705,6 +705,11 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
   } else {
     updateMinimumState();
   }
+  if (childCoordinator) {
+    DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
+    sprintf(msg.progname, "clients_%d", clients.size());
+    *(parentSock) << msg;
+  }
 }
 
 void DmtcpCoordinator::initializeComputation()
@@ -857,6 +862,11 @@ void DmtcpCoordinator::onConnect()
   addDataSocket(client);
 
   JTRACE("END") (clients.size());
+  if (childCoordinator) {
+    DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
+    sprintf(msg.progname, "clients_%d", clients.size());
+    *(parentSock) << msg;
+  }
 }
 
 void DmtcpCoordinator::processDmtUserCmd(DmtcpMessage& hello_remote,
@@ -1352,6 +1362,8 @@ void DmtcpCoordinator::createConnectionToParentCoordinator()
   JASSERT(parentSock->isValid());
 
   DmtcpMessage msg (DMT_NEW_WORKER);
+  sprintf(msg.progname, "clients_%d", clients.size());
+  sprintf(msg.hostname, "%s", jalib::Filesystem::GetCurrentHostname().c_str());
   (*parentSock) << msg;
 
   msg.poison();
