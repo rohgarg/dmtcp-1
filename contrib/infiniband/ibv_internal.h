@@ -131,9 +131,6 @@ struct internal_ibv_qp {
   struct list post_recv_log; /*!< This list contains log entries that track what recv work
 //                                                         requests were posted. As recv work requests are polled from the CQ,
 //                                                         entries in this list are deleted. */
-  struct list post_send_log; /*!< This list contains log entries that track what send work
-//                                                         requests were posted. As send work requests are polled from the CQ,
-//                                                         entries in this list are deleted. */
   struct list_elem elem;
 };
 
@@ -146,7 +143,7 @@ struct internal_ibv_srq {
   struct ibv_srq_init_attr init_attr;
   struct list modify_srq_log;
   struct list post_srq_recv_log;
-  uint32_t recv_count;
+  pthread_mutex_t lock;
   struct list_elem elem;
 };
 
@@ -178,11 +175,6 @@ struct ibv_modify_srq_log {
 //! A log entry of a recv work request
 struct ibv_post_recv_log {
   struct ibv_recv_wr wr;
-  struct list_elem elem;
-};
-
-struct ibv_post_srq_recv_log {
-  struct ibv_recv_wr  wr;
   struct list_elem elem;
 };
 

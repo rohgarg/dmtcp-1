@@ -104,6 +104,9 @@ DECL_FPTR(post_send);
 DECL_FPTR(poll_cq);
 DECL_FPTR(req_notify_cq);
 
+extern void *tc_malloc(size_t) __attribute__((weak));
+extern void tc_free(void *) __attribute__((weak));
+
 /* These files are processed by sed at compile time */
 #include "keys.ic"
 #include "ibv_wr_ops_send.ic"
@@ -142,7 +145,6 @@ static void nameservice_register_data(void)
   send_qp_pd_info();
   send_rkey_info();
 }
-
 
 static void nameservice_send_queries(void)
 {
@@ -348,53 +350,26 @@ static void drain_completion_queue(struct internal_ibv_cq * internal_cq)
 
       if (opcode & IBV_WC_RECV ||
           opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
-	if (internal_qp->user_qp.srq) {
-	  struct internal_ibv_srq * internal_srq;
+        struct list_elem * e;
+        struct ibv_post_recv_log * log;
 
-	  internal_srq = ibv_srq_to_internal(internal_qp->user_qp.srq);
-	  internal_srq->recv_count++;
+	if (internal_qp->user_qp.srq) {
+	  struct internal_ibv_srq * internal_srq =
+	    ibv_srq_to_internal(internal_qp->user_qp.srq);
+
+          e = list_pop_front(&internal_srq->post_srq_recv_log);
 	}
 	else {
-          struct list_elem * e;
-          struct ibv_post_recv_log * log;
-
           e = list_pop_front(&internal_qp->post_recv_log);
-          log = list_entry(e, struct ibv_post_recv_log, elem);
-          free(log);
 	}
+        log = list_entry(e, struct ibv_post_recv_log, elem);
+        tc_free(log->wr.sg_list);
+        tc_free(log);
       } else if (opcode == IBV_WC_SEND ||
                  opcode == IBV_WC_RDMA_WRITE ||
                  opcode == IBV_WC_RDMA_READ ||
                  opcode == IBV_WC_COMP_SWAP ||
                  opcode == IBV_WC_FETCH_ADD) {
-	if (internal_qp->init_attr.sq_sig_all) {
-          struct list_elem * e;
-          struct ibv_post_send_log * log;
-
-          e = list_pop_front(&internal_qp->post_send_log);
-          log = list_entry(e, struct ibv_post_send_log, elem);
-          assert(log->magic == SEND_MAGIC);
-          free(log);
-	}
-	else {
-	  while(1) {
-            struct list_elem * e;
-            struct ibv_post_send_log * log;
-
-            e = list_pop_front(&internal_qp->post_send_log);
-            log = list_entry(e, struct ibv_post_send_log, elem);
-
-	    if (log->wr.send_flags & IBV_SEND_SIGNALED) {
-              assert(log->magic == SEND_MAGIC);
-              free(log);
-	      break;
-	    }
-	    else {
-              assert(log->magic == SEND_MAGIC);
-              free(log);
-	    }
-	  }
-	}
       } else if (opcode == IBV_WC_BIND_MW) {
         fprintf(stderr,
                 "Error: opcode %d specifies unsupported operation.\n", opcode);
@@ -403,7 +378,12 @@ static void drain_completion_queue(struct internal_ibv_cq * internal_cq)
         fprintf(stderr, "Unknown or invalid opcode.\n");
         exit(1);
       }
-    } else {
+    }
+    else if (ne < 0) {
+      fprintf(stderr, "Poll cq error\n");
+      exit(1);
+    }
+    else {
       free(wc);
     }
   } while (ne > 0);
@@ -427,28 +407,7 @@ void pre_checkpoint(void)
     drain_completion_queue(internal_cq);
   }
 
-  for (e = list_begin(&qp_list); e != list_end(&qp_list); e = list_next(e)) {
-    struct internal_ibv_qp * internal_qp;
-
-    internal_qp = list_entry(e, struct internal_ibv_qp, elem);
-
-    if (internal_qp->init_attr.sq_sig_all == 0) {
-      if (list_size(&internal_qp->post_send_log) > 0) {
-        w = list_begin(&internal_qp->post_send_log);
-        while (w != list_end(&internal_qp->post_send_log)) {
-          struct list_elem *t = w;
-          struct ibv_post_send_log *log = list_entry(t, struct ibv_post_send_log, elem);
-          if (!(log->wr.send_flags & IBV_SEND_SIGNALED)) {
-	    w = list_next(w);
-	    list_remove(&log->elem);
-	    free(log->wr.sg_list);
-	    free(log);
-	  }
-        }
-      }
-    }
-  }
-  PDEBUG("Made it out of pre_checkpoint\n");
+  PDEBUG("Made it out of pre_checkpoint.\n");
 }
 
 
@@ -797,24 +756,15 @@ void post_restart2(void)
     uint32_t i;
 
     internal_srq = list_entry(e, struct internal_ibv_srq, elem);
-    for (i = 0; i < internal_srq->recv_count; i++) {
-      w = list_pop_front(&internal_srq->post_srq_recv_log);
-      struct ibv_post_srq_recv_log * log;
-
-      log = list_entry(w, struct ibv_post_srq_recv_log, elem);
-      free(log);
-    }
-
-    internal_srq->recv_count = 0;
 
     for (w = list_begin(&internal_srq->post_srq_recv_log);
          w != list_end(&internal_srq->post_srq_recv_log);
          w = list_next(w)) {
-      struct ibv_post_srq_recv_log * log;
+      struct ibv_post_recv_log * log;
       struct ibv_recv_wr * copy_wr;
       struct ibv_recv_wr * bad_wr;
 
-      log = list_entry(w, struct ibv_post_srq_recv_log, elem);
+      log = list_entry(w, struct ibv_post_recv_log, elem);
       copy_wr = copy_recv_wr(&log->wr);
       update_lkey_recv(copy_wr);
 
@@ -920,53 +870,6 @@ void post_restart2(void)
 	exit(1);
       }
       delete_recv_wr(copy_wr);
-    }
-  }
-}
-
-void refill(void)
-{
-  struct list_elem * e;
-  for (e = list_begin(&qp_list); e != list_end(&qp_list); e = list_next(e)) {
-    struct internal_ibv_qp * internal_qp;
-    struct list_elem * w;
-
-    internal_qp = list_entry(e, struct internal_ibv_qp, elem);
-    for (w = list_begin(&internal_qp->post_send_log);
-         w != list_end(&internal_qp->post_send_log);
-         w = list_next(w)) {
-      struct ibv_post_send_log * log;
-      struct ibv_send_wr * copy_wr;
-      struct ibv_send_wr * bad_wr;
-
-      log = list_entry(w, struct ibv_post_send_log, elem);
-      PDEBUG("log->magic : %x\n", log->magic);
-      assert(log->magic == SEND_MAGIC);
-      assert(&log->wr != NULL);
-
-      copy_wr = copy_send_wr(&log->wr);
-      update_lkey_send(copy_wr);
-      switch (internal_qp->user_qp.qp_type) {
-        case IBV_QPT_RC:
-          update_rkey_send(copy_wr, internal_qp->remote_pd_id);
-          break;
-        case IBV_QPT_UD:
-          assert(copy_wr->opcode == IBV_WR_SEND);
-          update_ud_send_restart(copy_wr);
-          break;
-        default:
-          fprintf(stderr, "Warning: unsupported qp type: %d\n",
-                  internal_qp->user_qp.qp_type);
-          exit(1);
-      }
-
-      PDEBUG("About to repost send.\n");
-      int rslt = _real_ibv_post_send(internal_qp->real_qp, copy_wr, &bad_wr);
-      if (rslt) {
-        fprintf(stderr, "Repost recv failed.\n");
-	exit(1);
-      }
-      delete_send_wr(copy_wr);
     }
   }
 }
@@ -1545,6 +1448,7 @@ int _dereg_mr(struct ibv_mr * mr)
 int _ibv_req_notify_cq(struct ibv_cq * cq, int solicited_only)
 {
   DMTCP_PLUGIN_DISABLE_CKPT();
+
   struct internal_ibv_cq * internal_cq = ibv_cq_to_internal(cq);
   int rslt;
 
@@ -1591,6 +1495,8 @@ struct ibv_cq * _create_cq(struct ibv_context * context,
     exit(1);
   }
 
+  memset(internal_cq, 0, sizeof(struct internal_ibv_cq));
+
   /* set up the lists */
   list_init(&internal_cq->wc_queue);
   list_init(&internal_cq->req_notify_log);
@@ -1600,6 +1506,12 @@ struct ibv_cq * _create_cq(struct ibv_context * context,
                                                      real_channel, comp_vector);
 
   INIT_INTERNAL_IBV_TYPE(internal_cq);
+
+  if (!internal_cq->real_cq) {
+    fprintf(stderr, "Fail to create the cq\n");
+    exit(1);
+  }
+
   internal_cq->comp_vector = comp_vector;
   internal_cq->channel = ibv_comp_to_internal(channel);
 
@@ -1748,7 +1660,6 @@ struct ibv_qp * _create_qp(struct ibv_pd * pd,
   }
 
   list_init(&internal_qp->modify_qp_log);
-  list_init(&internal_qp->post_send_log);
   list_init(&internal_qp->post_recv_log);
   internal_qp->user_qp.context = &rslt->user_ctx;
   internal_qp->user_qp.pd = &internal_pd->user_pd;
@@ -1800,19 +1711,8 @@ int _destroy_qp(struct ibv_qp * qp)
     log = list_entry (e, struct ibv_post_recv_log, elem);
     e = list_next(e);
     list_remove(w);
-    free(log);
-  }
-
-  e = list_begin(&internal_qp->post_send_log);
-  while (e != list_end(&internal_qp->post_send_log)) {
-    struct list_elem * w = e;
-    struct ibv_post_send_log *log;
-
-    log = list_entry (e, struct ibv_post_send_log, elem);
-    assert(log->magic == SEND_MAGIC);
-    e = list_next(e);
-    list_remove(w);
-    free(log);
+    tc_free(log->wr.sg_list);
+    tc_free(log);
   }
 
   list_remove(&internal_qp->elem);
@@ -1940,8 +1840,8 @@ struct ibv_srq * _create_srq(struct ibv_pd * pd,
     return NULL;
   }
 
-  internal_srq->recv_count = 0;
   INIT_INTERNAL_IBV_TYPE(internal_srq);
+
   memcpy(&internal_srq->user_srq,
          internal_srq->real_srq,
          sizeof(struct ibv_srq));
@@ -1973,6 +1873,7 @@ struct ibv_srq * _create_srq(struct ibv_pd * pd,
   internal_srq->user_srq.context = &rslt->user_ctx;
   internal_srq->user_srq.pd = &internal_pd->user_pd;
   internal_srq->init_attr = *srq_init_attr;
+  assert(pthread_mutex_init(&internal_srq->lock, NULL) == 0);
 
   list_push_back(&srq_list, &internal_srq->elem);
   return &internal_srq->user_srq;
@@ -2000,14 +1901,16 @@ int _destroy_srq(struct ibv_srq * srq)
   e = list_begin(&internal_srq->post_srq_recv_log);
   while(e != list_end(&internal_srq->post_srq_recv_log)) {
     struct list_elem * w = e;
-    struct ibv_post_srq_recv_log * log;
+    struct ibv_post_recv_log * log;
 
-    log = list_entry(e, struct ibv_post_srq_recv_log, elem);
+    log = list_entry(e, struct ibv_post_recv_log, elem);
     e = list_next(e);
     list_remove(w);
-    free(log);
+    tc_free(log->wr.sg_list);
+    tc_free(log);
   }
 
+  assert(pthread_mutex_destroy(&internal_srq->lock) == 0);
   list_remove(&internal_srq->elem);
   free(internal_srq);
 
@@ -2049,38 +1952,57 @@ int _query_srq(struct ibv_srq * srq, struct ibv_srq_attr * srq_attr)
 
 int _ibv_post_recv(struct ibv_qp * qp, struct ibv_recv_wr * wr,
                    struct ibv_recv_wr ** bad_wr) {
-  struct internal_ibv_qp * internal_qp = ibv_qp_to_internal(qp);
-  struct ibv_recv_wr * copy_wr;
-  struct ibv_recv_wr *copy_wr1;
-
   DMTCP_PLUGIN_DISABLE_CKPT();
 
+  struct internal_ibv_qp * internal_qp = ibv_qp_to_internal(qp);
+
   assert(IS_INTERNAL_IBV_STRUCT(internal_qp));
-  copy_wr = copy_recv_wr(wr);
+  //TODO: Technically this does multiple loops, but, the code is cleaner
+  struct ibv_recv_wr * copy_wr;
   int rslt;
-  update_lkey_recv(copy_wr);
+
+  if (is_restart) {
+    copy_wr = copy_recv_wr(wr);
+    update_lkey_recv(copy_wr);
+  }
+  else {
+    copy_wr = wr;
+  }
 
   rslt = _real_ibv_post_recv(internal_qp->real_qp, copy_wr, bad_wr);
+  if (rslt != 0) {
+    fprintf(stderr, "Post recv failed: %d\n", errno);
+    exit(1);
+  }
 
-  delete_recv_wr(copy_wr);
-  copy_wr = copy_recv_wr(wr);
-  copy_wr1 = copy_wr;
-  while (copy_wr1) {
-    struct ibv_post_recv_log * log = malloc(sizeof(struct ibv_post_recv_log));
-    struct ibv_recv_wr *tmp;
+  if (is_restart) {
+    delete_recv_wr(copy_wr);
+  }
+
+  copy_wr = wr;
+  while (copy_wr) {
+    struct ibv_post_recv_log * log =
+      tc_malloc(sizeof(struct ibv_post_recv_log));
 
     if (!log) {
       fprintf(stderr, "Error: could not allocate memory for log.\n");
       exit(1);
     }
-    log->wr = *copy_wr1;
+
+    log->wr = *copy_wr;
     log->wr.next = NULL;
+    log->wr.sg_list =
+      tc_malloc(sizeof(struct ibv_sge) * log->wr.num_sge);
+    if (!log->wr.sg_list) {
+      fprintf(stderr, "Could allocate memory for sg_list\n");
+      exit(1);
+    }
+    memcpy(log->wr.sg_list, copy_wr->sg_list,
+           sizeof(struct ibv_sge) * log->wr.num_sge);
 
     list_push_back(&internal_qp->post_recv_log, &log->elem);
 
-    tmp = copy_wr1;
-    copy_wr1 = copy_wr1->next;
-    free(tmp);
+    copy_wr = copy_wr->next;
   }
 
   DMTCP_PLUGIN_ENABLE_CKPT();
@@ -2089,16 +2011,21 @@ int _ibv_post_recv(struct ibv_qp * qp, struct ibv_recv_wr * wr,
 
 int _ibv_post_srq_recv(struct ibv_srq * srq, struct ibv_recv_wr * wr,
                        struct ibv_recv_wr ** bad_wr) {
-  struct internal_ibv_srq * internal_srq = ibv_srq_to_internal(srq);
-  struct ibv_recv_wr * copy_wr;
-  int rslt;
-  struct ibv_recv_wr *copy_wr1;
-
   DMTCP_PLUGIN_DISABLE_CKPT();
 
+  struct internal_ibv_srq * internal_srq = ibv_srq_to_internal(srq);
+  //TODO: Technically this does multiple loops, but, the code is cleaner
+  struct ibv_recv_wr * copy_wr;
+  int rslt;
+
   assert(IS_INTERNAL_IBV_STRUCT(internal_srq));
-  copy_wr = copy_recv_wr(wr);
-  update_lkey_recv(copy_wr);
+  if (is_restart) {
+    copy_wr = copy_recv_wr(wr);
+    update_lkey_recv(copy_wr);
+  }
+  else {
+    copy_wr = wr;
+  }
 
   rslt = _real_ibv_post_srq_recv(internal_srq->real_srq, copy_wr, bad_wr);
   if (rslt) {
@@ -2106,46 +2033,60 @@ int _ibv_post_srq_recv(struct ibv_srq * srq, struct ibv_recv_wr * wr,
     exit(1);
   }
 
-  delete_recv_wr(copy_wr);
+  if (is_restart) {
+    delete_recv_wr(copy_wr);
+  }
 
-  copy_wr = copy_recv_wr(wr);
-  copy_wr1 = copy_wr;
-  while (copy_wr1) {
-    struct ibv_post_srq_recv_log * log;
-    struct ibv_recv_wr *tmp;
+  copy_wr = wr;
+  while (copy_wr) {
+    struct ibv_post_recv_log * log;
 
-    log = malloc(sizeof(struct ibv_post_srq_recv_log));
+    log = tc_malloc(sizeof(struct ibv_post_recv_log));
 
     if (!log) {
       fprintf(stderr, "Error: could not allocate memory for log.\n");
       exit(1);
     }
-    log->wr = *copy_wr1;
+    log->wr = *copy_wr;
     log->wr.next = NULL;
 
+    log->wr.sg_list =
+      tc_malloc(sizeof(struct ibv_sge) * log->wr.num_sge);
+    if (!log->wr.sg_list) {
+      fprintf(stderr, "Could allocate memory for sg_list\n");
+      exit(1);
+    }
+    memcpy(log->wr.sg_list, copy_wr->sg_list,
+           sizeof(struct ibv_sge) * log->wr.num_sge);
+    
+    assert(pthread_mutex_lock(&internal_srq->lock) == 0);
     list_push_back(&internal_srq->post_srq_recv_log, &log->elem);
+    assert(pthread_mutex_unlock(&internal_srq->lock) == 0);
 
-    tmp = copy_wr1;
-    copy_wr1 = copy_wr1->next;
-    free(tmp);
+    copy_wr = copy_wr->next;
   }
 
   DMTCP_PLUGIN_ENABLE_CKPT();
   return rslt;
 }
 
+
 int _ibv_post_send(struct ibv_qp * qp, struct ibv_send_wr * wr, struct
                    ibv_send_wr ** bad_wr) {
+  DMTCP_PLUGIN_DISABLE_CKPT();
+
   struct internal_ibv_qp * internal_qp = ibv_qp_to_internal(qp);
   struct ibv_send_wr * copy_wr;
   int rslt;
-  struct ibv_send_wr *copy_wr1;
-
-  DMTCP_PLUGIN_DISABLE_CKPT();
 
   assert(IS_INTERNAL_IBV_STRUCT(internal_qp));
-  copy_wr = copy_send_wr(wr);
-  update_lkey_send(copy_wr);
+  if (is_restart) {
+    copy_wr = copy_send_wr(wr);
+    update_lkey_send(copy_wr);
+  }
+  else {
+    copy_wr = wr;
+  }
 
   switch (internal_qp->user_qp.qp_type) {
     case IBV_QPT_RC:
@@ -2169,26 +2110,16 @@ int _ibv_post_send(struct ibv_qp * qp, struct ibv_send_wr * wr, struct
   }
 
   rslt = _real_ibv_post_send(internal_qp->real_qp, copy_wr, bad_wr);
+  if (rslt != 0) {
+    fprintf(stderr, "Post send failed: %d\n", errno);
+    exit(1);
+  }
 
-  delete_send_wr(copy_wr);
-
-  copy_wr = copy_send_wr(wr);
-  copy_wr1 = copy_wr;
-  while (copy_wr1) {
-    struct ibv_post_send_log * log = malloc(sizeof(struct ibv_post_send_log));
-    struct ibv_send_wr *tmp;
-
-    if (!log) {
-      fprintf(stderr, "Error: could not allocate memory for log.\n");
-      exit(1);
-    }
-    log->magic = SEND_MAGIC;
-    log->wr = *copy_wr1;
-    log->wr.next = NULL;
-    list_push_back(&internal_qp->post_send_log, &log->elem);
-    tmp = copy_wr1;
-    copy_wr1 = copy_wr1->next;
-    free(tmp);
+  if (is_restart) {
+    delete_send_wr(copy_wr);
+  }
+  else if (internal_qp->user_qp.qp_type == IBV_QPT_UD) {
+    reset_ud_send(copy_wr);
   }
 
   DMTCP_PLUGIN_ENABLE_CKPT();
@@ -2197,11 +2128,10 @@ int _ibv_post_send(struct ibv_qp * qp, struct ibv_send_wr * wr, struct
 
 int _ibv_poll_cq(struct ibv_cq * cq, int num_entries, struct ibv_wc * wc)
 {
+  DMTCP_PLUGIN_DISABLE_CKPT();
   int rslt = 0;
   struct internal_ibv_cq * internal_cq = ibv_cq_to_internal(cq);
   int size, i;
-
-  DMTCP_PLUGIN_DISABLE_CKPT();
 
   assert(IS_INTERNAL_IBV_STRUCT(internal_cq));
   size = list_size(&internal_cq->wc_queue);
@@ -2235,63 +2165,36 @@ int _ibv_poll_cq(struct ibv_cq * cq, int num_entries, struct ibv_wc * wc)
   }
 
   for (i = 0; i < rslt; i++) {
-    struct internal_ibv_qp * internal_qp = qp_num_to_qp(&qp_list, wc[i].qp_num);
     if (i >= size) {
+      struct internal_ibv_qp * internal_qp = qp_num_to_qp(&qp_list, wc[i].qp_num);
+      assert(internal_qp != NULL);
       enum ibv_wc_opcode opcode = wc[i].opcode;
       wc[i].qp_num = internal_qp->user_qp.qp_num;
       if (opcode & IBV_WC_RECV ||
           opcode == IBV_WC_RECV_RDMA_WITH_IMM) {
+        struct list_elem * e;
+        struct ibv_post_recv_log * log;
+
 	if (internal_qp->user_qp.srq) {
-	  struct internal_ibv_srq * internal_srq;
-	  internal_srq = ibv_srq_to_internal(internal_qp->user_qp.srq);
-	  internal_srq->recv_count++;
+	  struct internal_ibv_srq * internal_srq =
+	    ibv_srq_to_internal(internal_qp->user_qp.srq);
+
+          assert(pthread_mutex_lock(&internal_srq->lock) == 0);
+          e = list_pop_front(&internal_srq->post_srq_recv_log);
+          assert(pthread_mutex_unlock(&internal_srq->lock) == 0);
 	}
 	else {
-          struct list_elem * e;
-          struct ibv_post_recv_log * log;
-
           e = list_pop_front(&internal_qp->post_recv_log);
-          log = list_entry(e, struct ibv_post_recv_log, elem);
-
-          free(log->wr.sg_list);
-          free(log);
 	}
+        log = list_entry(e, struct ibv_post_recv_log, elem);
+
+        tc_free(log->wr.sg_list);
+        tc_free(log);
       } else if (opcode == IBV_WC_SEND ||
                  opcode == IBV_WC_RDMA_WRITE ||
                  opcode == IBV_WC_RDMA_READ ||
                  opcode == IBV_WC_COMP_SWAP ||
                  opcode == IBV_WC_FETCH_ADD) {
-	if (internal_qp->init_attr.sq_sig_all) {
-          struct list_elem * e;
-          struct ibv_post_send_log * log;
-
-          e = list_pop_front(&internal_qp->post_send_log);
-          log = list_entry(e, struct ibv_post_send_log, elem);
-
-          assert(log->magic == SEND_MAGIC);
-          free(log);
-	}
-	else {
-	  while(1) {
-            struct list_elem * e;
-            struct ibv_post_send_log * log;
-
-            e = list_pop_front(&internal_qp->post_send_log);
-            log = list_entry(e, struct ibv_post_send_log, elem);
-
-	    if (log->wr.send_flags & IBV_SEND_SIGNALED) {
-              assert(log->magic == SEND_MAGIC);
-              free(log->wr.sg_list);
-              free(log);
-	      break;
-	    }
-	    else {
-              assert(log->magic == SEND_MAGIC);
-              free(log->wr.sg_list);
-              free(log);
-	    }
-	  }
-	}
       } else if (opcode == IBV_WC_BIND_MW) {
         fprintf(stderr,
                 "Error: opcode %d specifies unsupported operation.\n", opcode);

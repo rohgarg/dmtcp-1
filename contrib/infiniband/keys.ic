@@ -10,8 +10,8 @@ uint32_t retrieve_lkey_mapping(uint32_t orig_key)
     }
   }
 
-//  fprintf(stderr, "Lkey not found... %u\n", orig_key);
-//  exit(1);
+  fprintf(stderr, "Lkey not found... %u\n", orig_key);
+  exit(1);
 }
 
 void sge_update_lkey(struct ibv_sge * list, int len)
@@ -118,4 +118,34 @@ void update_ud_send(struct ibv_send_wr *wr) {
   wr->wr.ud.ah = internal_ah->real_ah;
 
   update_ud_send(wr->next);
+}
+
+void reset_ud_send(struct ibv_send_wr *wr) {
+  struct list_elem *e;
+  bool found = false;
+
+  if (wr == NULL) {
+    return;
+  }
+
+  for (e = list_begin(&ah_list);
+       e != list_end(&ah_list);
+       e = list_next(e)) {
+    struct internal_ibv_ah *internal_ah;
+
+    internal_ah = list_entry(e, struct internal_ibv_ah, elem);
+
+    if (internal_ah->real_ah == wr->wr.ud.ah) {
+      wr->wr.ud.ah = &internal_ah->user_ah;
+      found = true;
+      break;
+    }
+  }
+
+  if (!found) {
+    fprintf(stderr, "Unable to reset ud wr\n");
+    exit(1);
+  }
+
+  reset_ud_send(wr->next);
 }
