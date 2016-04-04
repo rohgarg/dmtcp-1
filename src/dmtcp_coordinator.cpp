@@ -599,24 +599,20 @@ void DmtcpCoordinator::onData(CoordClient *client)
     case DMT_REGISTER_NAME_SERVICE_DATA:
     {
       JTRACE ("received REGISTER_NAME_SERVICE_DATA msg") (client->identity());
-      lookupService.registerData(msg, (const void*) extraData);
+      registerData(msg, (const void*) extraData);
     }
     break;
 
     case DMT_REGISTER_NAME_SERVICE_DATA_SYNC:
     {
       JTRACE ("received REGISTER_NAME_SERVICE_DATA_SYNC msg") (client->identity());
-      lookupService.registerData(msg, (const void*) extraData);
-      DmtcpMessage response(DMT_REGISTER_NAME_SERVICE_DATA_SYNC_RESPONSE);
-      JTRACE("Sending NS response to the client...");
-      client->sock() << response;
+      registerData(msg, (const void*) extraData, client->sock());
     }
     break;
     case DMT_NAME_SERVICE_QUERY:
     {
       JTRACE ("received NAME_SERVICE_QUERY msg") (client->identity());
-      lookupService.respondToQuery(client->sock(), msg,
-                                   (const void*) extraData);
+      respondToQuery(msg, (const void*) extraData, client->sock());
     }
     break;
 
@@ -770,7 +766,7 @@ void DmtcpCoordinator::onConnect()
     remote.readAll(extraData, hello_remote.extraBytes);
 
     JTRACE ("received NAME_SERVICE_QUERY msg on running") (hello_remote.from);
-    lookupService.respondToQuery(remote, hello_remote, extraData);
+    respondToQuery(hello_remote, extraData, remote);
     delete [] extraData;
     remote.close();
     return;
@@ -781,8 +777,10 @@ void DmtcpCoordinator::onConnect()
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
 
-    JTRACE ("received REGISTER_NAME_SERVICE_DATA msg on running") (hello_remote.from);
-    lookupService.registerData(hello_remote, (const void*) extraData);
+    JTRACE ("received REGISTER_NAME_SERVICE_DATA msg on running")
+      (hello_remote.from);
+    registerData(hello_remote, (const void*) extraData);
+
     delete [] extraData;
     remote.close();
     return;
@@ -793,12 +791,11 @@ void DmtcpCoordinator::onConnect()
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
 
-    JTRACE ("received REGISTER_NAME_SERVICE_DATA msg on running") (hello_remote.from);
-    lookupService.registerData(hello_remote, (const void*) extraData);
+    JTRACE ("received REGISTER_NAME_SERVICE_DATA msg on running")
+      (hello_remote.from);
+    registerData(hello_remote, (const void*) extraData, remote);
+
     delete [] extraData;
-    DmtcpMessage response(DMT_REGISTER_NAME_SERVICE_DATA_SYNC_RESPONSE);
-    JTRACE("Reading from incoming connection...");
-    remote << response;
     remote.close();
     return;
   }
@@ -1422,6 +1419,65 @@ void DmtcpCoordinator::ackSuspendMsg()
   // FIXME: start checkpoint barriers;
 
   WorkerState::setCurrentState(WorkerState::CHECKPOINTING);
+}
+
+void DmtcpCoordinator::registerData(const DmtcpMessage &hello_remote,
+                                    const void *extraData,
+                                    jalib::JSocket remote)
+{
+  if (!childCoordinator) {
+    lookupService.registerData(hello_remote, (const void*) extraData);
+  } else if (childCoordinator) {
+    DmtcpMessage msg = hello_remote;
+    msg.from = UniquePid::ThisProcess();
+    *(parentSock) << msg;
+    parentSock->writeAll((const char*) extraData, msg.extraBytes);
+
+    if (remote.isValid()) {
+      JTRACE("Waiting for NS response from parent coordinator...");
+      msg.poison();
+      *(parentSock) >> msg;
+      msg.assertValid();
+      JASSERT(msg.type == DMT_REGISTER_NAME_SERVICE_DATA_SYNC_RESPONSE);
+
+      DmtcpMessage response(DMT_REGISTER_NAME_SERVICE_DATA_SYNC_RESPONSE);
+      JTRACE("Sending NS response to the client...");
+      remote << response;
+    }
+  }
+}
+
+void DmtcpCoordinator::respondToQuery(const DmtcpMessage &hello_remote,
+                                      const void *extraData,
+                                      jalib::JSocket remote)
+{
+  if (!childCoordinator) {
+    lookupService.respondToQuery(remote, hello_remote, extraData);
+  } else if (childCoordinator) {
+    DmtcpMessage msg = hello_remote;
+    msg.from = UniquePid::ThisProcess();
+    *(parentSock) << msg;
+    parentSock->writeAll((const char*) extraData, msg.extraBytes);
+
+    msg.poison();
+    *(parentSock) >> msg;
+    msg.assertValid();
+    JASSERT(msg.type == DMT_NAME_SERVICE_QUERY_RESPONSE &&
+            msg.extraBytes == msg.valLen);
+
+    char *buf = new char [msg.extraBytes];
+    parentSock->readAll(buf, msg.extraBytes);
+
+    DmtcpMessage reply (DMT_NAME_SERVICE_QUERY_RESPONSE);
+    reply.keyLen = 0;
+    reply.valLen = msg.valLen;
+    reply.extraBytes = reply.valLen;
+
+    remote << reply;
+    if (reply.valLen > 0) {
+      remote.writeAll(buf, reply.valLen);
+    }
+  }
 }
 
 #define shift argc--; argv++

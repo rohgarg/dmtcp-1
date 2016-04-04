@@ -119,6 +119,13 @@ namespace dmtcp
       void processParentCoordinatorMsg();
       void ackSuspendMsg();
 
+      void registerData(const DmtcpMessage &hello_remote,
+                        const void *extraData,
+                        jalib::JSocket remote = -1);
+
+      void respondToQuery(const DmtcpMessage &hello_remote,
+                          const void *extraData,
+                          jalib::JSocket remote);
     private:
       size_t _numCkptWorkers;
       size_t _numRestartFilenames;
