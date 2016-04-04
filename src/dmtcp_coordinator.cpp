@@ -544,6 +544,7 @@ void DmtcpCoordinator::onData(CoordClient *client)
       workersAtCurrentBarrier++;
       if (workersAtCurrentBarrier == getStatus().numPeers) {
         updateMinimumState();
+        workersAtCurrentBarrier = 0;
       }
       break;
     }
@@ -685,6 +686,11 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
 
   ComputationStatus s = getStatus();
   if (s.numPeers < 1) {
+    if (parentSock != NULL) {
+      parentSock->close();
+      delete parentSock;
+      parentSock = NULL;
+    }
     if (exitOnLast) {
       JNOTE ("last client exited, shutting down..");
       handleUserCommand('q');
