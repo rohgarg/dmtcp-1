@@ -230,6 +230,7 @@ void CoordinatorAPI::updateSockFd()
 void CoordinatorAPI::connectAndSendUserCommand(char c,
                                                int *coordCmdStatus,
                                                int *numPeers,
+                                               int *numChildCoordinators,
                                                int *isRunning,
                                                int *ckptInterval)
 {
@@ -271,6 +272,9 @@ void CoordinatorAPI::connectAndSendUserCommand(char c,
   }
   if (numPeers != NULL) {
     *numPeers =  reply.numPeers;
+  }
+  if (numChildCoordinators != NULL) {
+    *numChildCoordinators =  reply.numChildCoordinators;
   }
   if (isRunning != NULL) {
     *isRunning = reply.isRunning;
@@ -568,7 +572,8 @@ void CoordinatorAPI::createNewConnectionBeforeFork(string& progname)
 void CoordinatorAPI::connectToCoordOnRestart(CoordinatorMode  mode,
                                              string progname,
                                              UniquePid compGroup,
-                                             int np,
+                                             int numPeers,
+                                             int numChildCoordinators,
                                              CoordinatorInfo *coordInfo,
                                              const char *host,
                                              int port,
@@ -583,7 +588,8 @@ void CoordinatorAPI::connectToCoordOnRestart(CoordinatorMode  mode,
   JTRACE("sending coordinator handshake")(UniquePid::ThisProcess());
   DmtcpMessage hello_local(DMT_RESTART_WORKER);
   hello_local.virtualPid = -1;
-  hello_local.numPeers = np;
+  hello_local.numPeers = numPeers;
+  hello_local.numChildCoordinators = numChildCoordinators;
   hello_local.compGroup = compGroup;
 
   DmtcpMessage hello_remote = sendRecvHandshake(hello_local, progname,

@@ -442,9 +442,11 @@ void DmtcpWorker::acknowledgeSuspendMsg()
   }
 
   JASSERT(msg.type == DMT_COMPUTATION_INFO) (msg.type);
-  JTRACE("Computation information") (msg.compGroup) (msg.numPeers);
+  JTRACE("Computation information")
+    (msg.compGroup) (msg.numPeers) (msg.numChildCoordinators);
   ProcessInfo::instance().compGroup(msg.compGroup);
   ProcessInfo::instance().numPeers(msg.numPeers);
+  ProcessInfo::instance().numChildCoordinators(msg.numChildCoordinators);
 }
 
 

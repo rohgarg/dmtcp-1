@@ -73,7 +73,8 @@ namespace dmtcp
       void connectToCoordOnRestart(CoordinatorMode  mode,
                                    string progname,
                                    UniquePid compGroup,
-                                   int np,
+                                   int numPeers,
+                                   int numChildCoordinators,
                                    CoordinatorInfo *coordInfo,
                                    const char *host,
                                    int port,
@@ -93,6 +94,7 @@ namespace dmtcp
       void connectAndSendUserCommand(char c,
                                      int *coordCmdStatus = NULL,
                                      int *numPeers = NULL,
+                                     int *numChildCoordinators = NULL,
                                      int *isRunning = NULL,
                                      int *ckptInterval = NULL);
 

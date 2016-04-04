@@ -144,8 +144,8 @@ static string thePortFile;
 static int parentPort = -1;
 static string parentHost;
 static jalib::JSocket* parentSock = NULL;
-static bool childCoordinator = false;
-static string barrierList;
+static bool barrierListSentToParentCoordinator = false;
+static int numChildCoordinators = 0;
 
 static bool exitOnLast = false;
 static bool blockUntilDone = false;
@@ -387,7 +387,7 @@ void DmtcpCoordinator::releaseBarrier(const string& barrier)
 {
   JTRACE("Waiting for global barrier") (barrier);
 
-  if (childCoordinator) {
+  if (parentSock != NULL) {
     *(parentSock) << DmtcpMessage(DMT_OK);
 
     JTRACE("waiting for DMT_BARRIER_RELEASED message");
@@ -417,14 +417,10 @@ void DmtcpCoordinator::releaseBarrier(const string& barrier)
 void DmtcpCoordinator::updateMinimumState()
 {
   ComputationStatus status = getStatus();
-
-  if (!status.minimumStateUnanimous ||
-      workersAtCurrentBarrier < status.numPeers) {
-    return;
-  }
+  JASSERT(status.minimumStateUnanimous);
 
   if (status.minimumState == WorkerState::SUSPENDED) {
-    if (childCoordinator) {
+    if (parentSock != NULL) {
       ackSuspendMsg();
     }
     broadcastMessage(DMT_COMPUTATION_INFO);
@@ -454,11 +450,15 @@ void DmtcpCoordinator::updateMinimumState()
     if (nextRestartBarrier == restartBarriers.size()) {
       JTIMER_STOP(restart);
       JNOTE("Resuming all nodes after restart");
-      if (childCoordinator) {
-        WorkerState::setCurrentState(WorkerState::RUNNING);
-        DmtcpMessage msg (DMT_OK);
-        (*parentSock) << msg;
-      }
+    }
+  }
+
+  if (status.minimumState == WorkerState::RUNNING) {
+    JNOTE("Resuming all nodes");
+    if (parentSock != NULL) {
+      WorkerState::setCurrentState(WorkerState::RUNNING);
+      DmtcpMessage msg (DMT_OK);
+      (*parentSock) << msg;
     }
   }
 }
@@ -478,7 +478,7 @@ void DmtcpCoordinator::recordCkptFilename(CoordClient *client,
   _numRestartFilenames++;
 
   if (_numRestartFilenames == _numCkptWorkers) {
-    if (childCoordinator) {
+    if (parentSock != NULL) {
       WorkerState::setCurrentState(WorkerState::CHECKPOINTED);
       DmtcpMessage msg (DMT_OK);
       (*parentSock) << msg;
@@ -542,14 +542,15 @@ void DmtcpCoordinator::onData(CoordClient *client)
       JTRACE ("got DMT_OK message") (client->state()) (msg.from) (msg.state);
       client->setState(msg.state);
       workersAtCurrentBarrier++;
-      updateMinimumState();
+      if (workersAtCurrentBarrier == getStatus().numPeers) {
+        updateMinimumState();
+      }
       break;
     }
 
     case DMT_BARRIER_LIST:
     {
       JNOTE("got DMT_BARRIER_LIST message") (msg.from) (extraData) (client->state());
-      barrierList = extraData;
       // TODO(kapil): Check barrier mismatch.
       vector<string> barriers = Util::tokenizeString(extraData, ";");
       if (barriers.size() == 2) {
@@ -561,11 +562,12 @@ void DmtcpCoordinator::onData(CoordClient *client)
         ckptBarriers = Util::tokenizeString(barriers[0], ",");
       }
 
-      if (parentPort != -1 && !parentHost.empty() && childCoordinator == false) {
-        createConnectionToParentCoordinator();
-        childCoordinator = true;
-        // FIXME: Register with Parent Coordinator.
-        // Regist parentSock with eventloop;
+      if (parentSock != NULL && !barrierListSentToParentCoordinator) {
+        DmtcpMessage barrierListMsg(DMT_BARRIER_LIST);
+        msg.extraBytes = msg.extraBytes;
+        (*parentSock) << msg;
+        parentSock->writeAll(extraData, msg.extraBytes);
+        barrierListSentToParentCoordinator = true;
       }
       break;
     }
@@ -701,7 +703,7 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
   } else {
     updateMinimumState();
   }
-  if (childCoordinator) {
+  if (parentSock != NULL) {
     DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
     sprintf(msg.progname, "clients_%d", clients.size());
     *(parentSock) << msg;
@@ -729,6 +731,8 @@ void DmtcpCoordinator::initializeComputation()
   ckptBarriers.clear();
   restartBarriers.clear();
 
+  numChildCoordinators = 0;
+  barrierListSentToParentCoordinator = false;
 }
 
 void DmtcpCoordinator::onConnect()
@@ -760,7 +764,6 @@ void DmtcpCoordinator::onConnect()
     return;
   }
   if (hello_remote.type == DMT_NAME_SERVICE_QUERY) {
-    JASSERT(!childCoordinator);
     JASSERT(hello_remote.extraBytes > 0) (hello_remote.extraBytes);
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
@@ -772,7 +775,6 @@ void DmtcpCoordinator::onConnect()
     return;
   }
   if (hello_remote.type == DMT_REGISTER_NAME_SERVICE_DATA) {
-    JASSERT(!childCoordinator);
     JASSERT(hello_remote.extraBytes > 0) (hello_remote.extraBytes);
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
@@ -786,7 +788,6 @@ void DmtcpCoordinator::onConnect()
     return;
   }
   if (hello_remote.type == DMT_REGISTER_NAME_SERVICE_DATA_SYNC) {
-    JASSERT(!childCoordinator);
     JASSERT(hello_remote.extraBytes > 0) (hello_remote.extraBytes);
     char *extraData = new char[hello_remote.extraBytes];
     remote.readAll(extraData, hello_remote.extraBytes);
@@ -858,7 +859,12 @@ void DmtcpCoordinator::onConnect()
   addDataSocket(client);
 
   JTRACE("END") (clients.size());
-  if (childCoordinator) {
+
+  if (parentPort != -1) {
+    if (parentSock == NULL) {
+      JASSERT(clients.size() == 1);
+      createConnectionToParentCoordinator();
+    }
     DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
     sprintf(msg.progname, "clients_%d", clients.size());
     *(parentSock) << msg;
@@ -913,6 +919,7 @@ bool DmtcpCoordinator::validateRestartingWorkerProcess(
     // Coordinator is free at this moment - set up all the things
     compId = hello_remote.compGroup;
     numPeers = hello_remote.numPeers;
+    numChildCoordinators = hello_remote.numChildCoordinators;
     JASSERT(gettimeofday(&tv, NULL) == 0);
     // Get the resolution down to 100 mili seconds.
     curTimeStamp = (tv.tv_sec << 4) | (tv.tv_usec / (100*1000));
@@ -1100,6 +1107,7 @@ void DmtcpCoordinator::broadcastMessage(DmtcpMessageType type,
   msg.type = type;
   msg.compGroup = compId;
   msg.numPeers = clients.size();
+  msg.numChildCoordinators = numChildCoordinators;
   msg.exitAfterCkpt = exitAfterCkpt || exitAfterCkptOnce;
   msg.extraBytes = extraBytes;
 
@@ -1349,15 +1357,24 @@ void DmtcpCoordinator::addDataSocket(CoordClient *client)
 
 void DmtcpCoordinator::createConnectionToParentCoordinator()
 {
-  WorkerState::setCurrentState (WorkerState::RUNNING);
-
   DmtcpUniqueProcessId compId;
   struct in_addr localIPAddr;
 
   parentSock = new jalib::JClientSocket(parentHost.c_str(), parentPort);
   JASSERT(parentSock->isValid());
 
-  DmtcpMessage msg (DMT_NEW_WORKER);
+  DmtcpMessage msg;
+  if (numChildCoordinators == 0) {
+    msg.type = DMT_NEW_WORKER;
+    msg.state = WorkerState::RUNNING;
+    WorkerState::setCurrentState(WorkerState::RUNNING);
+  } else {
+    msg.type = DMT_RESTART_WORKER;
+    msg.numPeers = numChildCoordinators;
+    msg.state = WorkerState::RESTARTING;
+    WorkerState::setCurrentState(WorkerState::RESTARTING);
+  }
+
   sprintf(msg.progname, "clients_%d", clients.size());
   sprintf(msg.hostname, "%s", jalib::Filesystem::GetCurrentHostname().c_str());
   (*parentSock) << msg;
@@ -1366,13 +1383,6 @@ void DmtcpCoordinator::createConnectionToParentCoordinator()
   (*parentSock) >> msg;
   msg.assertValid();
   JASSERT(msg.type == DMT_ACCEPT)(msg.type);
-
-  // FIXME: Send barrier list.
-  msg.type = DMT_BARRIER_LIST;
-  msg.state = WorkerState::RUNNING;
-  msg.extraBytes = barrierList.length() + 1;
-  (*parentSock) << msg;
-  parentSock->writeAll(barrierList.c_str(), msg.extraBytes);
 
   struct epoll_event ev;
 
@@ -1393,6 +1403,7 @@ void DmtcpCoordinator::processParentCoordinatorMsg()
   msg.assertValid();
   if (msg.type == DMT_KILL_PEER) {
     JTRACE("Received KILL message from coordinator, exiting");
+    broadcastMessage(DMT_KILL_PEER);
     _exit (0);
   }
 
@@ -1415,6 +1426,7 @@ void DmtcpCoordinator::ackSuspendMsg()
   }
 
   JASSERT(msg.type == DMT_COMPUTATION_INFO) (msg.type);
+  numChildCoordinators = msg.numPeers;
 
   // FIXME: start checkpoint barriers;
 
@@ -1425,9 +1437,9 @@ void DmtcpCoordinator::registerData(const DmtcpMessage &hello_remote,
                                     const void *extraData,
                                     jalib::JSocket remote)
 {
-  if (!childCoordinator) {
+  if (parentSock == NULL) {
     lookupService.registerData(hello_remote, (const void*) extraData);
-  } else if (childCoordinator) {
+  } else {
     DmtcpMessage msg = hello_remote;
     msg.from = UniquePid::ThisProcess();
     *(parentSock) << msg;
@@ -1451,9 +1463,9 @@ void DmtcpCoordinator::respondToQuery(const DmtcpMessage &hello_remote,
                                       const void *extraData,
                                       jalib::JSocket remote)
 {
-  if (!childCoordinator) {
+  if (parentSock == NULL) {
     lookupService.respondToQuery(remote, hello_remote, extraData);
-  } else if (childCoordinator) {
+  } else {
     DmtcpMessage msg = hello_remote;
     msg.from = UniquePid::ThisProcess();
     *(parentSock) << msg;
