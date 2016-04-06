@@ -116,6 +116,7 @@ namespace dmtcp
       void writeRestartScript();
 
       void createConnectionToParentCoordinator();
+      void sendUpdatedClientCountToParent();
       void processParentCoordinatorMsg();
       void ackSuspendMsg();
 

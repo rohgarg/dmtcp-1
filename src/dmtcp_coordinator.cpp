@@ -734,9 +734,7 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
     updateMinimumState();
   }
   if (parentSock != NULL) {
-    DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
-    sprintf(msg.progname, "clients_%d", clients.size());
-    *(parentSock) << msg;
+    sendUpdatedClientCountToParent();
   }
 }
 
@@ -896,9 +894,7 @@ void DmtcpCoordinator::onConnect()
       JASSERT(clients.size() == 1);
       createConnectionToParentCoordinator();
     }
-    DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
-    sprintf(msg.progname, "clients_%d", clients.size());
-    *(parentSock) << msg;
+    sendUpdatedClientCountToParent();
   }
 }
 
@@ -1427,6 +1423,20 @@ void DmtcpCoordinator::createConnectionToParentCoordinator()
   ev.data.ptr = parentSock;
   JASSERT(epoll_ctl(epollFd, EPOLL_CTL_ADD, parentSock->sockfd(), &ev) != -1)
     (JASSERT_ERRNO);
+}
+
+void DmtcpCoordinator::sendUpdatedClientCountToParent()
+{
+  const char *nprocsStr = getenv("DMTCP_NPROCS");
+  static int nprocs = 0;
+  if (nprocsStr != NULL) {
+    nprocs = jalib::StringToInt(nprocsStr);
+  }
+  if (clients.size() >= nprocs) {
+    DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
+    sprintf(msg.progname, "clients_%d", clients.size());
+    *(parentSock) << msg;
+  }
 }
 
 void DmtcpCoordinator::processParentCoordinatorMsg()
