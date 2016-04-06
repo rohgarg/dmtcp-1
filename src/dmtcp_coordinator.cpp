@@ -417,7 +417,9 @@ void DmtcpCoordinator::releaseBarrier(const string& barrier)
 void DmtcpCoordinator::updateMinimumState()
 {
   ComputationStatus status = getStatus();
-  JASSERT(status.minimumStateUnanimous);
+  if (!status.minimumStateUnanimous) {
+    return;
+  }
 
   if (status.minimumState == WorkerState::SUSPENDED) {
     if (parentSock != NULL) {
