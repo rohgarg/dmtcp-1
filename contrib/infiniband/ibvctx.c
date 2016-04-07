@@ -76,7 +76,6 @@ static void post_restart(void);
 static void post_restart2(void);
 static void nameservice_register_data(void);
 static void nameservice_send_queries(void);
-static void refill(void);
 
 int _ibv_post_send(struct ibv_qp * qp, struct ibv_send_wr * wr,
                    struct ibv_send_wr ** bad_wr);
@@ -104,8 +103,13 @@ DECL_FPTR(post_send);
 DECL_FPTR(poll_cq);
 DECL_FPTR(req_notify_cq);
 
+#if 0
 extern void *tc_malloc(size_t) __attribute__((weak));
 extern void tc_free(void *) __attribute__((weak));
+#else
+# define tc_malloc malloc
+# define tc_free   free
+#endif
 
 /* These files are processed by sed at compile time */
 #include "keys.ic"
@@ -123,7 +127,6 @@ static DmtcpBarrier infinibandBarriers[] = {
   {DMTCP_GLOBAL_BARRIER_RESTART, post_restart, "restart"},
   {DMTCP_GLOBAL_BARRIER_RESTART, nameservice_register_data, "restart_nameservice_register_data"},
   {DMTCP_GLOBAL_BARRIER_RESTART, nameservice_send_queries, "restart_nameservice_send_queries"},
-  {DMTCP_GLOBAL_BARRIER_RESTART, refill, "restart_refill"}
 };
 
 DmtcpPluginDescriptor_t infiniband_plugin = {
