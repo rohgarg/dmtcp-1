@@ -453,8 +453,14 @@ void DmtcpCoordinator::updateMinimumState()
       WorkerState::setCurrentState (status.minimumState);
       releaseBarrier(ckptBarriers[nextCkptBarrier]);
       nextCkptBarrier++;
-    } else {
+    }
+    if (nextCkptBarrier == ckptBarriers.size()) {
       JNOTE("resuming all nodes after checkpoint");
+      if (parentSock != NULL) {
+        WorkerState::setCurrentState(WorkerState::RUNNING);
+        DmtcpMessage msg (DMT_OK);
+        (*parentSock) << msg;
+      }
     }
   }
 
@@ -773,9 +779,10 @@ void DmtcpCoordinator::onConnect()
 
   DmtcpMessage hello_remote;
   hello_remote.poison();
-  JTRACE("Reading from incoming connection...");
   remote >> hello_remote;
-  if (!remote.isValid()) {
+  JTRACE("Reading from incoming connection...")(hello_remote.from)(remote.isValid())(hello_remote.isValid())(hello_remote.type);
+  if (!remote.isValid() || !hello_remote.isValid()) {
+    JNOTE("Invalid connection!");
     remote.close();
     return;
   }
@@ -936,7 +943,9 @@ bool DmtcpCoordinator::validateRestartingWorkerProcess(
 
   JASSERT(hello_remote.state == WorkerState::RESTARTING) (hello_remote.state);
 
-  if (compId == UniquePid(0,0,0)) {
+  if (clients.size() >= 1) {
+    /* Nothing to do */
+  } else if (compId == UniquePid(0,0,0)) {
     lookupService.reset();
     JASSERT ( minimumState() == WorkerState::UNKNOWN ) (minimumState())
       .Text ( "Coordinator should be idle at this moment" );
@@ -1399,8 +1408,8 @@ void DmtcpCoordinator::createConnectionToParentCoordinator()
     WorkerState::setCurrentState(WorkerState::RESTARTING);
   }
 
-  sprintf(msg.progname, "clients_%d", clients.size());
-  sprintf(msg.hostname, "%s", jalib::Filesystem::GetCurrentHostname().c_str());
+  snprintf(msg.progname, sizeof(msg.progname)-1, "clients_%d", clients.size());
+  snprintf(msg.hostname, sizeof(msg.hostname)-1, "%s", jalib::Filesystem::GetCurrentHostname().c_str());
   (*parentSock) << msg;
 
   msg.poison();
