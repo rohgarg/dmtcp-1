@@ -22,6 +22,7 @@
  * and the unlock function. */
 extern dmtcp::map<pthread_mutex_t*, pid_t> mapMutexVirtTid;
 
+#if 0
 extern "C" int pthread_mutex_lock(pthread_mutex_t *mutex) {
   int rc;
 
@@ -55,3 +56,4 @@ extern "C" int pthread_mutex_timedlock(pthread_mutex_t *mutex,
 
   return rc;
 }
+#endif
