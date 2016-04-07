@@ -151,7 +151,7 @@ void PluginManager::processResumeBarriers()
 void PluginManager::logCkptResumeBarrierOverhead()
 {
   char logFilename[5000] = {0};
-  snprintf(logFilename, sizeof(logFilename), "timings.%d.csv", getpid());
+  snprintf(logFilename, sizeof(logFilename), "%s/timings.%s.csv", dmtcp_get_ckpt_dir(), dmtcp_get_uniquepid_str());
   std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
     for (int j = 0; j < pluginManager->pluginInfos[i]->preCkptBarriers.size(); j++) {
@@ -172,7 +172,7 @@ void PluginManager::logCkptResumeBarrierOverhead()
 void PluginManager::logRestartBarrierOverhead()
 {
   char logFilename[5000] = {0};
-  snprintf(logFilename, sizeof(logFilename), "timings.%d.csv", getpid());
+  snprintf(logFilename, sizeof(logFilename), "%s/timings.%s.csv", dmtcp_get_ckpt_dir(), dmtcp_get_uniquepid_str());
   std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
     for (int j = 0; j < pluginManager->pluginInfos[i]->restartBarriers.size(); j++) {
