@@ -174,6 +174,7 @@ static void pidVirt_PostRestart()
 }
 
 static void pidVirt_RefillTid() {
+#if 0
   map<pthread_mutex_t*, pid_t>::iterator it;
 
   for (it = mapMutexVirtTid().begin(); it != mapMutexVirtTid().end(); it++) {
@@ -181,6 +182,7 @@ static void pidVirt_RefillTid() {
       it->first->__data.__owner = VIRTUAL_TO_REAL_PID(it->second);
     }
   }
+#endif
 }
 
 static void pidVirt_PostRestartRefill()
