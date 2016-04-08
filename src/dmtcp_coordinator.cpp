@@ -183,6 +183,7 @@ static bool uniqueCkptFilenames = false;
 static uint32_t theCheckpointInterval = 0; /* Current checkpoint interval */
 static uint32_t theDefaultCheckpointInterval = 0; /* Reset to this on new comp. */
 static bool timerExpired = false;
+static size_t computationSize = 0;
 
 static void resetCkptTimer();
 
@@ -190,6 +191,7 @@ const int STDIN_FD = fileno ( stdin );
 
 JTIMER ( checkpoint );
 JTIMER ( restart );
+JTIMER ( launch );
 
 static UniquePid compId;
 static int numPeers = -1;
@@ -234,6 +236,8 @@ CoordClient::CoordClient(const jalib::JSocket& sock,
   _ip = inet_ntoa(in->sin_addr);
   _hostname = hello_remote.hostname;
   _progname = hello_remote.progname;
+  _isSubCoordinator = hello_remote.numWorkers > 0;
+  _numRealWorkers = hello_remote.numWorkers;
 }
 
 pid_t DmtcpCoordinator::getNewVirtualPid()
@@ -357,6 +361,20 @@ void DmtcpCoordinator::handleUserCommand(char cmd, DmtcpMessage* reply /*= NULL*
       reply->theCheckpointInterval = theCheckpointInterval;
     } else {
       printStatus(s.numPeers, running);
+    }
+    break;
+  }
+  case 'r': case 'R':
+  {
+    ComputationStatus s = getStatus();
+    bool running = (s.minimumStateUnanimous &&
+                    s.minimumState==WorkerState::RUNNING);
+    if (reply != NULL) {
+      reply->numPeers = this->_numRealWorkers;
+      reply->isRunning = running;
+      reply->theCheckpointInterval = theCheckpointInterval;
+    } else {
+      printStatus(this->_numRealWorkers, running);
     }
     break;
   }
@@ -656,6 +674,17 @@ void DmtcpCoordinator::onData(CoordClient *client)
       string progname = msg.progname;
       JNOTE("Updating process Information after exec()")
         (progname) (msg.from) (client->identity());
+      if (!parentSock) {
+        /* Update the total count for the root coordinator */
+        this->_numRealWorkers = 0;
+	client->setNumRealWorkers(msg.numWorkers);
+	for (int i = 0; i < clients.size(); i++) {
+          this->_numRealWorkers += clients[i]->isSubCoordinator() ? clients[i]->numRealWorkers() : 0;
+	}
+      }
+      if (this->_numRealWorkers == computationSize) {
+        JTIMER_STOP(launch);
+      }
       client->setState(msg.state);
       client->progname(progname);
       client->identity(msg.from);
@@ -734,7 +763,9 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
     updateMinimumState();
   }
   if (parentSock != NULL) {
-    sendUpdatedClientCountToParent();
+    /* Update the count for the subcoordinator */
+    this->_numRealWorkers = clients.size();
+    sendUpdatedClientCountToParent(true);
   }
 }
 
@@ -852,6 +883,9 @@ void DmtcpCoordinator::onConnect()
   // sockets OR there can be one data socket and that should be STDIN.
   if (clients.size() == 0) {
     initializeComputation();
+    if (hello_remote.type == DMT_NEW_WORKER) {
+      JTIMER_START(launch);
+    }
   }
 
   CoordClient *client = new CoordClient(remote, &remoteAddr, remoteLen,
@@ -888,13 +922,33 @@ void DmtcpCoordinator::onConnect()
   addDataSocket(client);
 
   JTRACE("END") (clients.size());
+  if (this->_numRealWorkers == computationSize) {
+    JTIMER_STOP(launch);
+  }
 
   if (parentPort != -1) {
     if (parentSock == NULL) {
       JASSERT(clients.size() == 1);
       createConnectionToParentCoordinator();
     }
+    /* Update the count for the subcoordinator */
+    this->_numRealWorkers = clients.size();
+
+    /* NOTE: The following function may or may not send an update to the
+     * root depending on the value of the DMTCP_NPROCS env var. So,
+     * we need to do the accounting for the num. of real workers below
+     * in the else case.
+     */
     sendUpdatedClientCountToParent();
+  } else {
+    /* See note above. */
+    if (!parentSock) {
+      /* Update the total count for the root coordinator */
+      this->_numRealWorkers = 0;
+      for (int i = 0; i < clients.size(); i++) {
+        this->_numRealWorkers += clients[i]->isSubCoordinator() ? clients[i]->numRealWorkers() : 0;
+      }
+    }
   }
 }
 
@@ -1384,6 +1438,9 @@ void DmtcpCoordinator::addDataSocket(CoordClient *client)
     (JASSERT_ERRNO);
 }
 
+/* Called by a sub-coordinator when the first worker connects with it.
+ * Precondition: clients.size() == 1
+ */
 void DmtcpCoordinator::createConnectionToParentCoordinator()
 {
   DmtcpUniqueProcessId compId;
@@ -1404,6 +1461,7 @@ void DmtcpCoordinator::createConnectionToParentCoordinator()
     WorkerState::setCurrentState(WorkerState::RESTARTING);
   }
 
+  msg.numWorkers = 1;
   snprintf(msg.progname, sizeof(msg.progname)-1, "clients_%d", clients.size());
   snprintf(msg.hostname, sizeof(msg.hostname)-1, "%s", jalib::Filesystem::GetCurrentHostname().c_str());
   (*parentSock) << msg;
@@ -1425,15 +1483,36 @@ void DmtcpCoordinator::createConnectionToParentCoordinator()
     (JASSERT_ERRNO);
 }
 
-void DmtcpCoordinator::sendUpdatedClientCountToParent()
+/* Called by a subcoordinator to update the root coordinator of worker
+ * connects and disconnects.
+ */
+void DmtcpCoordinator::sendUpdatedClientCountToParent(bool calledOnDisconnect)
 {
+  bool shouldUpdate = false;
   const char *nprocsStr = getenv("DMTCP_NPROCS");
+  //const char *nprocsStr = "16"; // getenv("DMTCP_NPROCS");
   static int nprocs = 0;
   if (nprocsStr != NULL) {
     nprocs = jalib::StringToInt(nprocsStr);
   }
-  if (clients.size() >= nprocs) {
+  /* TODO(rohgarg): Add different msg types for connects and disconnects;
+   *  This along with "numWorkers" would preclude the need to use program name as a
+   *  medium for informing the root coordinator about the number of _real_ workers.
+   */
+  if (!calledOnDisconnect) {
+    /* Do not update on every worker connect to avoid congesting the network
+     * with many small update msgs. This is really useful at large scales.
+     */
+    if (clients.size() >= nprocs) {
+      shouldUpdate = true;
+    }
+  } else {
+    /* Update on every worker disconnect */
+    shouldUpdate = true;
+  }
+  if (shouldUpdate) {
     DmtcpMessage msg(DMT_UPDATE_PROCESS_INFO_AFTER_INIT_OR_EXEC);
+    msg.numWorkers = clients.size();
     sprintf(msg.progname, "clients_%d", clients.size());
     *(parentSock) << msg;
   }
@@ -1576,6 +1655,9 @@ int main ( int argc, char** argv )
       shift;
     } else if (s == "-i" || s == "--interval") {
       setenv(ENV_VAR_CKPT_INTR, argv[1], 1);
+      shift; shift;
+    } else if (s == "--size") {
+      computationSize = jalib::StringToInt( argv[1] );
       shift; shift;
     } else if (argv[0][0] == '-' && argv[0][1] == 'i' &&
                isdigit(argv[0][2])) { // else if -i5, for example

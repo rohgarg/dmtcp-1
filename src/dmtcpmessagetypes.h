@@ -155,6 +155,11 @@ namespace dmtcp
     uint32_t exitAfterCkpt;
     int32_t coordCmdStatus;
 
+    /* Used by a subcoord to update the number of _real_
+     * workers with the root coord
+     */
+    uint32_t numWorkers;
+
     uint64_t coordTimeStamp;
 
     uint32_t theCheckpointInterval;

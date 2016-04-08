@@ -53,6 +53,9 @@ namespace dmtcp
       pid_t virtualPid(void) const { return _virtualPid; }
       void virtualPid(pid_t pid) { _virtualPid = pid; }
       int isNSWorker() {return _isNSWorker;}
+      bool isSubCoordinator() { return _isSubCoordinator; }
+      uint32_t numRealWorkers() { return _numRealWorkers; }
+      void setNumRealWorkers(uint32_t numRealWorkers) { this->_numRealWorkers = numRealWorkers; }
 
     private:
       UniquePid _identity;
@@ -65,6 +68,8 @@ namespace dmtcp
       pid_t _realPid;
       pid_t _virtualPid;
       int _isNSWorker;
+      bool _isSubCoordinator;
+      uint32_t _numRealWorkers;
   };
 
   class DmtcpCoordinator
@@ -116,7 +121,7 @@ namespace dmtcp
       void writeRestartScript();
 
       void createConnectionToParentCoordinator();
-      void sendUpdatedClientCountToParent();
+      void sendUpdatedClientCountToParent(bool calledOnDisconnect = false);
       void processParentCoordinatorMsg();
       void ackSuspendMsg();
 
@@ -130,6 +135,7 @@ namespace dmtcp
     private:
       size_t _numCkptWorkers;
       size_t _numRestartFilenames;
+      size_t _numRealWorkers;
       //map from hostname to checkpoint files
       map< string, vector<string> > _restartFilenames;
       map< pid_t, CoordClient* > _virtualPidToClientMap;
