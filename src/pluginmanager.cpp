@@ -1,3 +1,4 @@
+#include <sys/time.h>
 #include "pluginmanager.h"
 
 #include "dmtcp.h"
@@ -136,15 +137,24 @@ void PluginManager::registerBarriersWithCoordinator()
                                                   msg.extraBytes);
 }
 
+struct timeval startCkpt, endCkpt, diffCkpt;
+
 void PluginManager::processCkptBarriers()
 {
+  memset(&startCkpt, 0, sizeof(startCkpt));
+  memset(&endCkpt, 0, sizeof(endCkpt));
+  memset(&diffCkpt, 0, sizeof(diffCkpt));
+
   for (int i = 0; i < pluginManager->pluginInfos.size(); i++) {
     pluginManager->pluginInfos[i]->processBarriers();
   }
+
+  JASSERT(gettimeofday(&startCkpt, NULL) == 0);
 }
 
 void PluginManager::processResumeBarriers()
 {
+  JASSERT(gettimeofday(&endCkpt, NULL) == 0);
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
     pluginManager->pluginInfos[i]->processBarriers();
   }
@@ -155,6 +165,11 @@ void PluginManager::logCkptResumeBarrierOverhead()
   char logFilename[5000] = {0};
   snprintf(logFilename, sizeof(logFilename), "%s/timings.%s.csv", dmtcp_get_ckpt_dir(), dmtcp_get_uniquepid_str());
   std::ofstream logfile ( logFilename, std::ios::out | std::ios::app );
+
+  timersub(&endCkpt, &startCkpt, &diffCkpt);
+  double ckpttime = diffCkpt.tv_sec + (diffCkpt.tv_usec/1000000.0);
+  logfile << "Ckpt-time," << ckpttime << std::endl;
+
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
     for (int j = 0; j < pluginManager->pluginInfos[i]->preCkptBarriers.size(); j++) {
       logfile << pluginManager->pluginInfos[i]->preCkptBarriers[j]->toString() <<  ','
