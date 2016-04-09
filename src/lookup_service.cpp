@@ -19,11 +19,45 @@
  *  <http://www.gnu.org/licenses/>.                                         *
  ****************************************************************************/
 
+
 #include "lookup_service.h"
 #include "../jalib/jassert.h"
 #include "../jalib/jsocket.h"
 
 using namespace dmtcp;
+
+string LookupService::getSummaryStats()
+{
+  ostringstream o;
+
+  size_t totalKeys = 0;
+  size_t totalSize = 0;
+  for (ConstMapIterator i = _maps.begin(); i != _maps.end(); i++) {
+    const KeyValueMap &kvmap = i->second;
+    o << i->first  << ": " << kvmap.size();
+    totalKeys += kvmap.size();
+    KeyValueMap::const_iterator it;
+    for (it = kvmap.begin(); it != kvmap.end(); it++) {
+      const KeyValue &k = it->first;
+      KeyValue *v = it->second;
+      size_t kvmapSize = ((k.len() + v->len()) * kvmap.size());
+      totalSize += kvmapSize;
+      o << " (keyLen: " << k.len() << ", valLen: " << v->len() << ")";
+      o << " totalSize: " << kvmapSize  << " (" << kvmapSize / 1024 << " KB)";
+      break;
+    }
+  }
+
+  ostringstream o2;
+  o2 << "Nameservice database stats:"
+     << "\n#databases:  " << _maps.size()
+     << "\n#total keys: " << totalKeys
+     << "\n#total size: " << totalSize << " (" << totalSize / 1024 << " KB)"
+     << "\nIndividual database stats:\n"
+     << o.str();
+
+  return o2.str();
+}
 
 void LookupService::reset()
 {
@@ -44,8 +78,8 @@ void LookupService::reset()
 }
 
 void LookupService::addKeyValue(string id,
-                                       const void *key, size_t keyLen,
-                                       const void *val, size_t valLen)
+                                const void *key, size_t keyLen,
+                                const void *val, size_t valLen)
 {
   KeyValueMap &kvmap = _maps[id];
 

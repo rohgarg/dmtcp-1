@@ -394,6 +394,7 @@ void DmtcpCoordinator::printStatus(size_t numPeers, bool isRunning)
     << "NUM_PEERS=" << numPeers << std::endl
     << "RUNNING=" << (isRunning ? "yes" : "no") << std::endl;
   printf("%s", o.str().c_str());
+  printf("\n%s", lookupService.getSummaryStats().c_str());
   fflush(stdout);
 }
 

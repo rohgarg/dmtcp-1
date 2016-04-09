@@ -44,7 +44,7 @@ namespace dmtcp
       }
 
       void *data() {return _data;}
-      size_t len() {return _len;}
+      size_t len() const {return _len;}
 
       bool operator< ( const KeyValue& that ) const {
         if (_len == that._len) {
@@ -69,19 +69,21 @@ namespace dmtcp
       LookupService(){}
       ~LookupService() { reset(); }
       void reset();
+      string getSummaryStats();
       void registerData(const DmtcpMessage& msg, const void *data);
       void respondToQuery(jalib::JSocket& remote,
                           const DmtcpMessage& msg, const void *data);
 
     private:
-      typedef map<KeyValue, KeyValue*> KeyValueMap;
-      typedef map<string, KeyValueMap>::iterator MapIterator;
       void addKeyValue(string id, const void *key, size_t keyLen,
                        const void *val, size_t valLen);
       void query(string id, const void *key, size_t keyLen,
                  void **val, size_t *valLen);
 
-    private:
+      typedef map<KeyValue, KeyValue*> KeyValueMap;
+      typedef map<string, KeyValueMap>::iterator MapIterator;
+      typedef map<string, KeyValueMap>::const_iterator ConstMapIterator;
+
       map<string, KeyValueMap> _maps;
   };
 }
