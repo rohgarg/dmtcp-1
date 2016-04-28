@@ -113,6 +113,7 @@ int dmtcp_infiniband_enabled(void) { return 1; }
 
 void dmtcp_event_hook(DmtcpEvent_t event, DmtcpEventData_t* data)
 {
+  char buff[10] = {0}
   switch (event) {
     case DMTCP_EVENT_WRITE_CKPT:
       pre_checkpoint();
@@ -122,21 +123,24 @@ void dmtcp_event_hook(DmtcpEvent_t event, DmtcpEventData_t* data)
       post_restart();
       break;
     case DMTCP_EVENT_REGISTER_NAME_SERVICE_DATA:
-      if (data->nameserviceInfo.isRestart) {
+      if (data->nameserviceInfo.isRestart &&
+          dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
         send_qp_info();
         send_qp_pd_info();
         send_rkey_info();
       }
       break;
     case DMTCP_EVENT_SEND_QUERIES:
-      if (data->nameserviceInfo.isRestart) {
+      if (data->nameserviceInfo.isRestart &&
+          dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
         query_qp_info();
         query_qp_pd_info();
         post_restart2();
       }
       break;
     case DMTCP_EVENT_REFILL:
-      if (is_restart) {
+      if (is_restart &&
+          dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
         refill();
       }
       break;

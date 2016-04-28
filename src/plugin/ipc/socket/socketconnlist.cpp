@@ -17,7 +17,33 @@ static bool _hasUNIXSock = false;
 
 void dmtcp_SocketConnList_EventHook(DmtcpEvent_t event, DmtcpEventData_t *data)
 {
-  SocketConnList::instance().eventHook(event, data);
+  char buff[10] = {0};
+  static int state = 0;
+  switch (event) {
+    case DMTCP_EVENT_LEADER_ELECTION:
+      state = 0;
+    case DMTCP_EVENT_INIT:
+    case DMTCP_EVENT_PRE_EXEC:
+    case DMTCP_EVENT_POST_EXEC:
+    case DMTCP_EVENT_THREADS_SUSPEND:
+    case DMTCP_EVENT_DRAIN:
+    case DMTCP_EVENT_WRITE_CKPT:
+     SocketConnList::instance().eventHook(event, data);
+     break;
+
+    case DMTCP_EVENT_RESTART:
+      state = 1;
+    case DMTCP_EVENT_REFILL:
+    case DMTCP_EVENT_REGISTER_NAME_SERVICE_DATA:
+    case DMTCP_EVENT_SEND_QUERIES:
+      if (state == 0 || dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
+        SocketConnList::instance().eventHook(event, data);
+      }
+      break;
+
+    default:
+      break;
+  }
 }
 
 void dmtcp_SocketConn_ProcessFdEvent(int event, int arg1, int arg2)
