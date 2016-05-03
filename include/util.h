@@ -65,6 +65,9 @@ typedef char * VA;
 
 #define CEIL(a,b) ((a)%(b) ? ((a) + (b) - ((a)%(b))) : (a))
 
+#define DEBUG_POST_RESTART    7
+#define DEBUG_PLUGIN_MANAGER  6
+
 EXTERNC void initializeJalib();
 
 EXTERNC int dmtcp_infiniband_enabled(void) __attribute__((weak));
@@ -178,6 +181,7 @@ namespace dmtcp
                          char *exec_path);
     string getPath(string cmd, bool is32bit = false);
     void getDmtcpArgs(vector<string> &dmtcp_args);
+    void allowGdbDebug(int currentDebugLevel);
   }
 }
 #endif

@@ -96,6 +96,8 @@ static const char* theUsage =
   "              (default: use the same directory used in previous checkpoint)\n"
   "  --tmpdir PATH (environment variable DMTCP_TMPDIR)\n"
   "              Directory to store temporary files (default: $TMDPIR or /tmp)\n"
+  "  --gdb    LEVEL\n"
+  "              Attach gdb on the restarted process\n"
   "  -q, --quiet (or set environment variable DMTCP_QUIET = 0, 1, or 2)\n"
   "              Skip NOTE messages; if given twice, also skip WARNINGs\n"
   "  --coord-logfile PATH (environment variable DMTCP_COORD_LOG_FILENAME\n"
@@ -108,6 +110,8 @@ static const char* theUsage =
   HELP_AND_CONTACT_INFO
   "\n"
 ;
+
+static int requestedDebugLevel = 0;
 
 class RestoreTarget;
 
@@ -140,6 +144,7 @@ class RestoreTarget
     const UniquePid& upid() const { return _pInfo.upid(); }
     pid_t pid() const { return _pInfo.pid(); }
     pid_t sid() const { return _pInfo.sid(); }
+    const string& procSelfExe() const { return _pInfo.procSelfExe(); }
     bool isRootOfProcessTree() const {
       return _pInfo.isRootOfProcessTree();
     }
@@ -392,6 +397,43 @@ static void runMtcpRestart(int is32bitElf, int fd, ProcessInfo *pInfo)
     prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0); // Allow 'gdb attach'
   }
 #endif
+
+  if (requestedDebugLevel > 0) {
+    int debugPipe[2];
+    socketpair(AF_UNIX, SOCK_STREAM, 0, debugPipe);
+    pid_t pid = fork();
+    if (pid > 0) {
+      int currentDebugLevel = 0;
+      int rc = -1;
+      close(debugPipe[1]);
+      do {
+        rc = read(debugPipe[0], &currentDebugLevel, sizeof(currentDebugLevel));
+        if (rc < 0) break;
+        rc = write(debugPipe[0], &requestedDebugLevel, sizeof(currentDebugLevel));
+        if (rc < 0) break;
+      } while (currentDebugLevel != requestedDebugLevel);
+      if (rc < 0) {
+        int status;
+        waitpid(pid, &status, 0);
+      }
+      char cpid[10]; // XXX: Is 10 digits enough for a PID?
+      snprintf(cpid, 10, "%d", pid);
+      char* const command[] = {"gdb",
+                               const_cast<char*>(pInfo->procSelfExe().c_str()),
+                               cpid,
+                               NULL};
+      execvp(command[0], command);
+    } else if (pid == 0) {
+      close(debugPipe[0]); // child doesn't need the read end
+      JASSERT(dup2(debugPipe[1], PROTECTED_DEBUG_PIPE_FD) == PROTECTED_DEBUG_PIPE_FD)(JASSERT_ERRNO);
+      close(debugPipe[1]);
+#ifdef HAS_PR_SET_PTRACER
+      prctl(PR_SET_PTRACER, PR_SET_PTRACER_ANY, 0, 0, 0); // Allow 'gdb attach'
+#endif
+    } else {
+     JASSERT(false)(JASSERT_ERRNO).Text("Fork failed");
+    }
+  }
 
   static string mtcprestart = Util::getPath ("mtcp_restart");
 
@@ -698,6 +740,9 @@ int main(int argc, char** argv)
       shift; shift;
     } else if (argc > 1 && (s == "-t" || s == "--tmpdir")) {
       tmpdir_arg = argv[1];
+      shift; shift;
+    } else if (argc > 1 && (s == "--gdb")) {
+      requestedDebugLevel = atoi(argv[1]);
       shift; shift;
     } else if (s == "-q" || s == "--quiet") {
       *getenv(ENV_VAR_QUIET) = *getenv(ENV_VAR_QUIET) + 1;

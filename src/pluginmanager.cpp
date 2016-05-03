@@ -154,6 +154,8 @@ void PluginManager::processRestartBarriers()
 {
   PluginManager::registerBarriersWithCoordinator();
 
+  Util::allowGdbDebug(DEBUG_PLUGIN_MANAGER);
+
   CoordinatorAPI::instance().waitForBarrier(firstRestartBarrier);
   for (int i = pluginManager->pluginInfos.size() - 1; i >= 0; i--) {
     pluginManager->pluginInfos[i]->processBarriers();

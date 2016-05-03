@@ -694,7 +694,7 @@ void ProcessInfo::serialize(jalib::JBinarySerializer& o)
 
   o & _elfType;
   o & _isRootOfProcessTree & _pid & _sid & _ppid & _gid & _fgid & _generation;
-  o & _procname & _hostname & _launchCWD & _ckptCWD & _upid & _uppid;
+  o & _procname & _procSelfExe & _hostname & _launchCWD & _ckptCWD & _upid & _uppid;
   o & _compGroup & _numPeers & _noCoordinator & _argvSize & _envSize;
   o & _restoreBufAddr & _savedHeapStart & _savedBrk;
   o & _vdsoStart & _vdsoEnd & _vvarStart & _vvarEnd;
