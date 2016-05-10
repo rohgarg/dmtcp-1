@@ -376,8 +376,10 @@ static void runMtcpRestart(int is32bitElf, int fd, ProcessInfo *pInfo)
 {
   char fdBuf[8];
   char stderrFdBuf[8];
+  char timingFdBuf[8];
   sprintf(fdBuf, "%d", fd);
   sprintf(stderrFdBuf, "%d", PROTECTED_STDERR_FD);
+  sprintf(timingFdBuf, "%d", PROTECTED_MTCP_RESTART_TIMING_FD);
 
 #ifdef HAS_PR_SET_PTRACER
   if (getenv("DMTCP_GDB_ATTACH_ON_RESTART")) {
@@ -403,11 +405,18 @@ static void runMtcpRestart(int is32bitElf, int fd, ProcessInfo *pInfo)
     mtcprestart = Util::getPath("mtcp_restart-32", is32bitElf);
   }
 #endif
+  char logFilename[5000] = {0};
+  snprintf(logFilename, sizeof(logFilename), "./mtcp_timings.%s.csv", pInfo->upid().toString().c_str());
+  int tmpfd = open(logFilename, O_CREAT | O_APPEND | O_WRONLY, 0664);
+  JASSERT(tmpfd > 0)(logFilename)(JASSERT_ERRNO);
+  JASSERT(dup2(tmpfd, PROTECTED_MTCP_RESTART_TIMING_FD) == PROTECTED_MTCP_RESTART_TIMING_FD)(JASSERT_ERRNO);
+  close(tmpfd);
 
   char* const newArgs[] = {
     (char*) mtcprestart.c_str(),
     const_cast<char*> ("--fd"), fdBuf,
     const_cast<char*> ("--stderr-fd"), stderrFdBuf,
+    const_cast<char*> ("--timing-fd"), timingFdBuf,
     NULL
   };
 

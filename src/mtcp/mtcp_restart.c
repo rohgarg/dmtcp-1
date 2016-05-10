@@ -86,6 +86,7 @@ typedef void (*fnptr_t)();
 typedef struct RestoreInfo {
   int fd;
   int stderr_fd;  /* FIXME:  This is never used. */
+  int timing_fd;
   // int mtcp_sys_errno;
   VA text_addr;
   size_t text_size;
@@ -106,6 +107,7 @@ typedef struct RestoreInfo {
   ThreadTLSInfo motherofall_tls_info;
   int tls_pid_offset;
   int tls_tid_offset;
+  struct timeval startValue;
   MYINFO_GS_T myinfo_gs;
 } RestoreInfo;
 static RestoreInfo rinfo;
@@ -224,6 +226,9 @@ MTCP_PRINTF("Attach for debugging.");
     } else if (mtcp_strcmp(argv[0], "--stderr-fd") == 0) {
       rinfo.stderr_fd = mtcp_strtol(argv[1]);
       shift; shift;
+    } else if (mtcp_strcmp(argv[0], "--timing-fd") == 0) {
+      rinfo.timing_fd = mtcp_strtol(argv[1]);
+      shift; shift;
     } else if (mtcp_strcmp(argv[0], "--simulate") == 0) {
       simulate = 1;
       shift;
@@ -238,6 +243,7 @@ MTCP_PRINTF("Attach for debugging.");
     mtcp_abort();
   }
 
+  mtcp_sys_gettimeofday(&rinfo.startValue, NULL);
   if (rinfo.fd != -1) {
     mtcp_readfile(rinfo.fd, &mtcpHdr, sizeof mtcpHdr);
   } else {
@@ -594,6 +600,20 @@ static void restorememoryareas(RestoreInfo *rinfo_ptr)
 
   DPRINTF("close cpfd %d\n", restore_info.fd);
   mtcp_sys_close (restore_info.fd);
+
+  struct timeval endValue;
+  mtcp_sys_gettimeofday(&endValue, NULL);
+  double readTime = 0.0;
+  struct timeval diff;
+  timersub(&endValue, &restore_info.startValue, &diff);
+  readTime = diff.tv_sec + (diff.tv_usec / 1000000.0);
+  int logfile = restore_info.timing_fd;
+  MTCP_ASSERT(logfile > 0);
+  int writeRet = mtcp_write_all(logfile, &readTime, sizeof(double));
+
+  MTCP_ASSERT(writeRet == sizeof(double));
+  MTCP_ASSERT(mtcp_write_all(logfile, "\n", 1) >= 1);
+  mtcp_sys_close(logfile);
 
   IMB; /* flush instruction cache, since mtcp_restart.c code is now gone. */
 
