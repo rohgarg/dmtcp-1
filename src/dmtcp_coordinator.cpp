@@ -150,6 +150,8 @@ static int blockUntilDoneRemote = -1;
 
 static DmtcpCoordinator prog;
 
+static size_t computationSize = 0;
+
 /* The coordinator can receive a second checkpoint request while processing the
  * first one.  If the second request comes at a point where the coordinator has
  * broadcast DMT_DO_SUSPEND message but the workers haven't replied, the
@@ -185,6 +187,7 @@ const int STDIN_FD = fileno ( stdin );
 
 JTIMER ( checkpoint );
 JTIMER ( restart );
+JTIMER ( launch );
 
 static UniquePid compId;
 static int numPeers = -1;
@@ -780,6 +783,9 @@ void DmtcpCoordinator::onConnect()
   // sockets OR there can be one data socket and that should be STDIN.
   if (clients.size() == 0) {
     initializeComputation();
+    if (hello_remote.type == DMT_NEW_WORKER) {
+      JTIMER_START(launch);
+    }
   }
 
   CoordClient *client = new CoordClient(remote, &remoteAddr, remoteLen,
@@ -818,6 +824,9 @@ void DmtcpCoordinator::onConnect()
   addDataSocket(client);
 
   JTRACE("END") (clients.size());
+  if (clients.size() == computationSize) {
+    JTIMER_STOP(launch);
+  }
 }
 
 void DmtcpCoordinator::processDmtUserCmd(DmtcpMessage& hello_remote,
@@ -1359,6 +1368,9 @@ int main ( int argc, char** argv )
       shift; shift;
     } else if (s == "-i" || s == "--interval") {
       setenv(ENV_VAR_CKPT_INTR, argv[1], 1);
+      shift; shift;
+    } else if (s == "--size") {
+      computationSize = jalib::StringToInt( argv[1] );
       shift; shift;
     } else if (argv[0][0] == '-' && argv[0][1] == 'i' &&
                isdigit(argv[0][2])) { // else if -i5, for example
