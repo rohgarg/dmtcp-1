@@ -296,9 +296,43 @@ void FileConnList::recreateShmFileAndMap(const ProcMapsArea& area)
 
   // Get to the correct offset.
   JASSERT(lseek(fd, area.offset, SEEK_SET) == area.offset) (JASSERT_ERRNO);
-  // Now populate file contents from memory.
-  JASSERT(Util::writeAll(fd, area.addr, area.size) == (ssize_t)area.size)
-    (JASSERT_ERRNO);
+  if (strstr(area.name, "open-shmem")) {
+
+    // open checkpoint image
+    JNOTE("Ckpt file")(dmtcp_get_ckpt_filename());
+    int ckptImgfd = _real_open(dmtcp_get_ckpt_filename(), O_RDONLY);
+    JASSERT(ckptImgfd > 0)(JASSERT_ERRNO);
+
+    // verify that mtcp_restart has done its work
+    JASSERT(*(uint16_t*)area.addr == 0xbaba);
+
+    // seek to the offset in the ckpt file with the shared memory contents
+    off_t offsetInImgFile = *(off_t*)(area.addr + sizeof(uint16_t));
+    JASSERT(offsetInImgFile>0);
+    JASSERT(lseek(ckptImgfd, offsetInImgFile, SEEK_SET) == offsetInImgFile) (JASSERT_ERRNO);
+
+    // copy the data from ckpt file to the original file
+    long page_size = sysconf(_SC_PAGESIZE);
+    const size_t bufSize = 1024 * page_size;
+    char *buf =(char*)JALLOC_HELPER_MALLOC(bufSize);
+
+    int readBytes, writtenBytes;
+    ssize_t totalBytesWritten = 0;
+    while (totalBytesWritten < area.size) {
+      readBytes = Util::readAll(ckptImgfd, buf, bufSize);
+      JASSERT(readBytes != -1) (JASSERT_ERRNO) .Text("Read Failed");
+      if (readBytes == 0) break;
+      writtenBytes = Util::writeAll(fd, buf, readBytes);
+      JASSERT(writtenBytes != -1) (JASSERT_ERRNO) .Text("Write failed.");
+      totalBytesWritten += writtenBytes;
+    }
+    _real_close(ckptImgfd);
+    JALLOC_HELPER_FREE(buf);
+  } else {
+    // Now populate file contents from memory.
+    JASSERT(Util::writeAll(fd, area.addr, area.size) == (ssize_t)area.size)
+      (JASSERT_ERRNO);
+  }
   restoreShmArea(area, fd);
 }
 

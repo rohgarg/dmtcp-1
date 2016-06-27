@@ -50,6 +50,7 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <unistd.h>
+#include <inttypes.h>
 #include <sys/types.h>
 
 #include "mtcp_sys.h"
@@ -839,7 +840,12 @@ static int read_one_memory_area(int fd)
   // We could have replaced MAP_SHARED with MAP_PRIVATE in writeckpt.cpp
   // instead of here. But we do it this way for debugging purposes. This way,
   // readdmtcp.sh will still be able to properly list the shared memory areas.
+  int openSHMEMArea = 0;
   if (area.flags & MAP_SHARED) {
+    if (area.name && mtcp_strstr(area.name, "open-shmem")) {
+      openSHMEMArea = 1;
+      MTCP_PRINTF("Found an open-shmem area: %s %d %d\n", area.name, area.size, area.offset);
+    }
     area.flags = area.flags ^ MAP_SHARED;
     area.flags = area.flags | MAP_PRIVATE | MAP_ANONYMOUS;
   }
@@ -910,8 +916,17 @@ static int read_one_memory_area(int fd)
      * are valid.  Can we unmap vdso and vsyscall in Linux?  Used to use
      * mtcp_safemmap here to check for address conflicts.
      */
-    mmappedat = mtcp_sys_mmap (area.addr, area.size, area.prot | PROT_WRITE,
-                               area.flags, imagefd, area.offset);
+    if (openSHMEMArea) {
+      MTCP_PRINTF("Mapping just one page\n");
+      // note that imagefd is -1 here
+      //static int dummy = 0;
+      //while (!dummy);
+      mmappedat = mtcp_sys_mmap (area.addr, 0x4000, area.prot | PROT_WRITE,
+                                 area.flags, imagefd, area.offset);
+    } else {
+      mmappedat = mtcp_sys_mmap (area.addr, area.size, area.prot | PROT_WRITE,
+                                 area.flags, imagefd, area.offset);
+    }
 
     if (mmappedat == MAP_FAILED) {
       DPRINTF("error %d mapping %p bytes at %p\n",
@@ -928,6 +943,36 @@ static int read_one_memory_area(int fd)
     if (mmappedat != area.addr && !try_skipping_existing_segment) {
       MTCP_PRINTF("area at %p got mmapped to %p\n", area.addr, mmappedat);
       mtcp_abort ();
+    }
+    if (openSHMEMArea) {
+       /* We don't want to read through the ckpt file again to find the
+	* this area, so we just write a marker here and save the file
+	* offset in memory */
+       off_t curr_offset = mtcp_sys_lseek(fd, 0, SEEK_CUR);
+       if (curr_offset < 0) {
+          MTCP_PRINTF("Error getting fd offset: %d\n", mtcp_sys_errno);
+          static int dummy = 0;
+          while (!dummy);
+       }
+       MTCP_PRINTF("setting mmappedat to baba, fd offset: %x\n", curr_offset);
+       uint16_t *ptr = (uint16_t*)area.addr;
+       *ptr = 0xbaba;
+       ptr++; // move over by two bytes
+       off_t *newptr = (off_t*)ptr;
+       *newptr = curr_offset;
+       MTCP_ASSERT(*(uint16_t*)area.addr == 0xbaba);
+       MTCP_ASSERT(*(off_t*)((uint16_t*)area.addr+1) == curr_offset);
+#if 0
+       if (mtcp_sys_mprotect (area.addr, 0x4000, area.prot ^ PROT_WRITE) < 0) {
+          MTCP_PRINTF("error %d write-protecting %x bytes at %p\n",
+                      mtcp_sys_errno, 0x4000, area.addr);
+          mtcp_abort ();
+       } else {
+          MTCP_PRINTF("successfully write-protected %x bytes at %p\n",
+                      0x4000, area.addr);
+
+       }
+#endif
     }
 
 #if 0
@@ -951,13 +996,29 @@ static int read_one_memory_area(int fd)
       /* This mmapfile after prev. mmap is okay; use same args again.
        *  Posix says prev. map will be munmapped.
        */
-      /* ANALYZE THE CONDITION FOR DOING mmapfile MORE CAREFULLY. */
-      mtcp_readfile(fd, area.addr, area.size);
-      if (!(area.prot & PROT_WRITE)) {
-        if (mtcp_sys_mprotect (area.addr, area.size, area.prot) < 0) {
-          MTCP_PRINTF("error %d write-protecting %p bytes at %p\n",
-                      mtcp_sys_errno, area.size, area.addr);
-          mtcp_abort ();
+      if (openSHMEMArea) {
+        MTCP_PRINTF("Not Modifying openSHMEM area. Instead just seeking: %x bytes \n", area.size);
+        off_t t = mtcp_sys_lseek(fd, area.size, SEEK_CUR);
+        if (t < 0) {
+          MTCP_PRINTF("Error getting fd offset: %d\n", mtcp_sys_errno == ESPIPE);
+        } else {
+          MTCP_PRINTF("fd offset after seeking: %x\n", t);
+        }
+        off_t curr_offset = mtcp_sys_lseek(fd, 0, SEEK_CUR);
+        if (curr_offset < 0) {
+          MTCP_PRINTF("Error getting fd offset: %d\n", mtcp_sys_errno == ESPIPE);
+        } else {
+          MTCP_PRINTF("fd offset after seeking: %x\n", curr_offset);
+        }
+      } else {
+        /* ANALYZE THE CONDITION FOR DOING mmapfile MORE CAREFULLY. */
+        mtcp_readfile(fd, area.addr, area.size);
+        if (!(area.prot & PROT_WRITE)) {
+          if (mtcp_sys_mprotect (area.addr, area.size, area.prot) < 0) {
+            MTCP_PRINTF("error %d write-protecting %p bytes at %p\n",
+                        mtcp_sys_errno, area.size, area.addr);
+            mtcp_abort ();
+          }
         }
       }
     }

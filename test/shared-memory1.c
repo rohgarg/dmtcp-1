@@ -16,10 +16,12 @@ void reader(int fd);
 void writer(int fd);
 
 int main() {
-  char filename[] = "dmtcp-shared-memory.XXXXXX";
+  //char filename[] = "dmtcp-shared-memory.XXXXXX";
+  char filename[] = "/tmp/open-shmem-1000";
   int fd;
 
-  fd = mkstemp(filename);
+  //fd = mkstemp(filename);
+  fd = open(filename, O_CREAT | O_RDWR);
   printf("creating temporary file in local directory: %s\n", filename);
   //printf("creating file: %s\n", "/tmp/dmtcp-shared-memory.dat");
   unlink(filename);
