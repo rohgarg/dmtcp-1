@@ -97,7 +97,8 @@ namespace dmtcp
         TCP_CONNECT,
         TCP_CONNECT_IN_PROGRESS,
         TCP_PREEXISTING,
-        TCP_EXTERNAL_CONNECT
+        TCP_EXTERNAL_CONNECT,
+        TCP_EXTERNAL_CONNECT_DBUS,
       };
 
       TcpConnection() {}

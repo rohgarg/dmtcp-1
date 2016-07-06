@@ -285,11 +285,12 @@ bool TcpConnection::isBlacklistedTcp(const sockaddr* saddr, socklen_t len)
     }
   } else if (saddr->sa_family == AF_UNIX) {
     struct sockaddr_un *uaddr = (struct sockaddr_un *) saddr;
-    static string blacklist[] = {""};
+    static string blacklist[] = {"/run/dbus/system_bus_socket", "/run", ""};
     for (size_t i = 0; blacklist[i] != ""; i++) {
       if (Util::strStartsWith(uaddr->sun_path, blacklist[i].c_str()) ||
           Util::strStartsWith(&uaddr->sun_path[1], blacklist[i].c_str())) {
-        JTRACE("Blacklisted socket address") (uaddr->sun_path);
+        JNOTE("Blacklisted socket address") (uaddr->sun_path);
+        _type = TCP_EXTERNAL_CONNECT_DBUS;
         return true;
       }
     }
@@ -361,7 +362,8 @@ void TcpConnection::onConnect(const struct sockaddr *addr,
     .Text("Connecting with an in-use socket????");
 
   if (addr != NULL && isBlacklistedTcp(addr, len)) {
-    _type = TCP_EXTERNAL_CONNECT;
+    if (_type != TCP_EXTERNAL_CONNECT_DBUS)
+      _type = TCP_EXTERNAL_CONNECT;
     _connectAddrlen = len;
     memcpy(&_connectAddr, addr, len);
   } else if (connectInProgress) {
@@ -512,11 +514,34 @@ void TcpConnection::postRestart()
   switch (_type) {
     case TCP_PREEXISTING:
     case TCP_INVALID:
-    case TCP_EXTERNAL_CONNECT:
       JTRACE("Creating dead socket.") (_fds[0]) (_fds.size());
       Util::dupFds(_makeDeadSocket(), _fds);
       break;
 
+    case TCP_EXTERNAL_CONNECT:
+    case TCP_EXTERNAL_CONNECT_DBUS:
+    {
+      int sockFd = _real_socket(_sockDomain, _sockType, _sockProtocol);
+      JASSERT(sockFd >= 0);
+      Util::dupFds(sockFd, _fds);
+      JWARNING(0 == _real_connect(sockFd,(sockaddr*) &_connectAddr,
+                                  _connectAddrlen))
+        (_fds[0]) (JASSERT_ERRNO)
+        .Text("Unable to connect to external process");
+      if (_type == TCP_EXTERNAL_CONNECT) break;
+      JNOTE("Restoring DBUS socket");
+      char dumpData[2048] = {0};
+      sendto(_fds[0], "\0", 1, MSG_NOSIGNAL, NULL, 0);
+      JNOTE("Authenticating DBUS socket");
+      sendto(_fds[0], "AUTH EXTERNAL 31303030\r\n", 24, MSG_NOSIGNAL, NULL, 0);
+      read(_fds[0], dumpData, 2048);
+      JNOTE("Authenticated DBUS socket")(dumpData);
+      sendto(_fds[0], "NEGOTIATE_UNIX_FD\r\n", 19, MSG_NOSIGNAL, NULL, 0);
+      read(_fds[0], dumpData/*"AGREE_UNIX_FD\r\n"*/, 2048);
+      JNOTE("Negotiated unix fd for DBUS socket")(dumpData);
+      sendto(_fds[0], "BEGIN\r\n", 7, MSG_NOSIGNAL, NULL, 0);
+    }
+    break;
     case TCP_ERROR:
       // Disconnected socket. Need to refill the drained data
       {
@@ -771,7 +796,7 @@ void RawSocketConnection::postRestart()
                 int ret = _real_setsockopt(_fds[0], lvl->first, opt->first,
                                            opt->second.buffer(),
                                            opt->second.size());
-                JASSERT(ret == 0) (JASSERT_ERRNO) (_fds[0]) (lvl->first)
+                JWARNING(ret == 0) (JASSERT_ERRNO) (_fds[0]) (lvl->first)
                   (opt->first) (opt->second.buffer()) (opt->second.size())
                   .Text("Restoring setsockopt failed.");
               }
