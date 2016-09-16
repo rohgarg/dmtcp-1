@@ -650,3 +650,9 @@ bool Util::isIBShmArea(const ProcMapsArea& area)
 {
   return strStartsWith(area.name, "/dev/infiniband/uverbs");
 }
+
+// Check for OmniPath shared memory area
+bool Util::isOmniPathArea(const ProcMapsArea& area)
+{
+  return strStartsWith(area.name, "/dev/hfi");
+}

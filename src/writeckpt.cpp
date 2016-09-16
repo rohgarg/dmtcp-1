@@ -246,6 +246,9 @@ void mtcp_writememoryareas(int fd)
     } else if (Util::isIBShmArea(area)) {
       // TODO: Don't checkpoint infiniband shared area for now.
       continue;
+    } else if (Util::isOmniPathArea(area)) {
+      // TODO: Don't checkpoint OmniPath shared area for now.
+      continue;
     } else if (Util::strEndsWith(area.name, DELETED_FILE_SUFFIX)) {
       /* Deleted File */
     } else if (area.name[0] == '/' && strstr(&area.name[1], "/") != NULL) {

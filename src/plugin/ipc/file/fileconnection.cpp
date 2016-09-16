@@ -74,6 +74,7 @@ static bool _isBlacklistedFile(string& path)
   if ((Util::strStartsWith(path, "/dev/") &&
        !Util::strStartsWith(path, "/dev/shm/")) ||
       Util::strStartsWith(path, "/proc/") ||
+      Util::strStartsWith(path, "/dev/hfi") ||
       Util::strStartsWith(path, dmtcp_get_tmpdir())) {
     return true;
   }
@@ -693,6 +694,7 @@ void FileConnection::refill(bool isRestart)
   struct stat statbuf;
   if (!isRestart) return;
   if (strstr(_path.c_str(), "infiniband/uverbs") ||
+      strstr(_path.c_str(), "/dev/hfi") ||
       strstr(_path.c_str(), "uverbs-event")) return;
 
   if (_ckpted_file && _fileAlreadyExists) {
