@@ -173,7 +173,6 @@ initialize_and_start_perf_attr(struct perf_event_attr *pes, int i, __u32 type, _
 static bool
 invoke_ctr()
 {
-  printf("###########");
   struct perf_event_attr pe[NUM_OF_PERF_EVENTS];
 
   memset(pe, 0, sizeof(struct perf_event_attr) * NUM_OF_PERF_EVENTS);
@@ -181,7 +180,6 @@ invoke_ctr()
   started = true;
 
   bool ret = true;
-  printf("###########");
 
  // ret &= initialize_and_start_perf_attr(&pe[0], 0, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_PAGE_FAULTS);
  // ret &= initialize_and_start_perf_attr(&pe[1], 1, PERF_TYPE_SOFTWARE, PERF_COUNT_SW_CONTEXT_SWITCHES);
@@ -203,7 +201,6 @@ invoke_ctr()
 // ret &= initialize_and_start_perf_attr(&pe[7], 7, PERF_TYPE_HARDWARE, PERF_COUNT_HW_BRANCH_INSTRUCTIONS);
 
   JTRACE("started all ctrs")(ret)(started)(getStatsFilename(NULL));
-  printf("###########");
   return ret;
 }
 
