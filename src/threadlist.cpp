@@ -676,6 +676,8 @@ void ThreadList::waitForAllRestored(Thread *thread)
   }
 }
 
+EXTERNC int setup_perf_ctr() __attribute__((weak));
+
 /*****************************************************************************
  *
  *****************************************************************************/
@@ -713,6 +715,10 @@ void ThreadList::postRestart(void)
   restoreInProgress = true;
 
   Util::allowGdbDebug(DEBUG_POST_RESTART);
+  if (setup_perf_ctr) {
+    JTRACE("starting perf ctrs");
+    JWARNING(setup_perf_ctr()).Text("Error setting up perf ctrs.");
+  }
 
   sigfillset(&tmp);
   for (thread = activeThreads; thread != NULL; thread = thread->next) {
