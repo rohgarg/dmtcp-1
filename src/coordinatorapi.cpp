@@ -446,6 +446,8 @@ void CoordinatorAPI::recvMsgFromCoordinator(DmtcpMessage *msg, void **extraData)
   }
 }
 
+extern bool shouldExitAfterCkpt __attribute ((weak));
+
 void CoordinatorAPI::startNewCoordinator(CoordinatorMode mode)
 {
   string host = "";
@@ -485,12 +487,14 @@ void CoordinatorAPI::startNewCoordinator(CoordinatorMode mode)
       jalib::Filesystem::GetProgramDir() + "/dmtcp_coordinator";
 
     char *modeStr = (char *)"--daemon";
+    char *exitAfterCkpt = shouldExitAfterCkpt ? (char*)"--exit-after-ckpt" : NULL;
     char * args[] = {
       (char*)coordinator.c_str(),
       (char*)"--quiet",
       /* If we wish to also suppress coordinator warnings, call --quiet twice */
       (char*)"--exit-on-last",
       modeStr,
+      exitAfterCkpt,
       NULL
     };
     execv(args[0], args);
