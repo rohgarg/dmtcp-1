@@ -62,6 +62,8 @@ enum ProtectedFds {
   ENVIRON_FD,
   NS_FD,
   DEBUG_SOCKET_FD,
+  PERF_CTR1_FD,
+  PERF_CTR2_FD,
   FD_END
 };
 
@@ -86,6 +88,8 @@ enum ProtectedFds {
 #define PROTECTED_ENVIRON_FD              protectedFdBase() + ENVIRON_FD
 #define PROTECTED_NS_FD                   protectedFdBase() + NS_FD
 #define PROTECTED_DEBUG_SOCKET_FD         protectedFdBase() + DEBUG_SOCKET_FD
+#define PROTECTED_PERF_CTR1_FD            protectedFdBase() + PERF_CTR1_FD
+#define PROTECTED_PERF_CTR2_FD            protectedFdBase() + PERF_CTR2_FD
 #define PROTECTED_FD_END                  protectedFdBase() + FD_END
 
 #define DMTCP_IS_PROTECTED_FD(fd) \
