@@ -218,12 +218,19 @@ setup_perf_ctr()
 static const char*
 getStatsFilename(char *fname)
 {
-  static dmtcp::string filename = "";
+  static dmtcp::string *filename = NULL;
   if (fname) {
     JTRACE("Setting filename")(filename)(fname);
-    filename = fname;
+    if (filename != NULL) {
+      delete filename;
+    }
+    filename = new dmtcp::string(fname);
   }
-  return filename.c_str();
+  if (filename) {
+    return filename->c_str();
+  } else {
+    return "";
+  }
 }
 
 static void dumpCtrs()
