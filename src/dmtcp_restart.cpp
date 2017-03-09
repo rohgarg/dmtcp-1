@@ -910,6 +910,16 @@ main(int argc, char **argv)
   }
 
   // Prepare list of independent process tree roots
+
+  // 1. iterate over all targets (processes/ckpt images)
+  // 2.   if current target, c, is root of tree
+  // 3.     iterate over all targets
+  // 4.       if target == c: continue
+  // 5.       if target.pid() == c.sid(): break
+  //                ==> c is not an independent root of tree
+  // 6.     if (no target has its pid equal to the sid of the root of tree)
+  // 7.       c is an independent root of tree
+
   RestoreTargetMap::iterator i;
   for (i = targets.begin(); i != targets.end(); i++) {
     RestoreTarget *t1 = i->second;
@@ -927,6 +937,9 @@ main(int argc, char **argv)
       if (j == targets.end()) {
         independentProcessTreeRoots[t1->upid()] = t1;
       }
+    }
+    if (getenv("DMTCP_SKIP_REFILL")) {
+      independentProcessTreeRoots[t1->upid()] = t1;
     }
   }
   JASSERT(independentProcessTreeRoots.size() > 0)
