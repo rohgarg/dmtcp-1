@@ -22,7 +22,11 @@ class SocketConnList : public ConnectionList
   public:
     static SocketConnList &instance();
 
-    static void saveOptions() { instance().preLockSaveOptions(); }
+    static void saveOptions()
+    {
+      instance().isPostRestart = false;
+      instance().preLockSaveOptions();
+    }
 
     static void leaderElection() { instance().preCkptFdLeaderElection(); }
 
@@ -55,6 +59,10 @@ class SocketConnList : public ConnectionList
 
     virtual void scanForPreExisting();
     virtual Connection *createDummyConnection(int type);
+
+  private:
+    SocketConnList();
+    bool isPostRestart;
 };
 }
 #endif // ifndef SOCKETCONNLIST_H

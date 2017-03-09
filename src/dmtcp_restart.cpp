@@ -271,7 +271,8 @@ class RestoreTarget
         CoordinatorAPI::connectToCoordOnRestart(allowedModes,
                                                 _pInfo.procname(),
                                                 _pInfo.compGroup(),
-                                                _pInfo.numPeers(),
+                                                getenv("DMTCP_SKIP_REFILL") ?
+                                                 1 : _pInfo.numPeers(),
                                                 &coordInfo,
                                                 host.c_str(),
                                                 port,
@@ -388,7 +389,8 @@ class RestoreTarget
         CoordinatorAPI::connectToCoordOnRestart(allowedModes,
                                                 _pInfo.procname(),
                                                 _pInfo.compGroup(),
-                                                _pInfo.numPeers(),
+                                                getenv("DMTCP_SKIP_REFILL") ?
+                                                 1 : _pInfo.numPeers(),
                                                 NULL,
                                                 host.c_str(),
                                                 port,

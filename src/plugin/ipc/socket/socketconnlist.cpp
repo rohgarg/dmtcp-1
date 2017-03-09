@@ -33,6 +33,11 @@ dmtcp_SocketConn_ProcessFdEvent(int event, int arg1, int arg2)
   }
 }
 
+SocketConnList::SocketConnList()
+  :isPostRestart(false)
+{
+}
+
 static SocketConnList *socketConnList = NULL;
 SocketConnList&
 SocketConnList::instance()
@@ -115,6 +120,7 @@ SocketConnList::preCkpt()
 void
 SocketConnList::postRestart()
 {
+  this->isPostRestart = true;
   ConnectionRewirer::instance().openRestoreSocket(_hasIPv4Sock, _hasIPv6Sock,
                                                   _hasUNIXSock);
   ConnectionList::postRestart();
@@ -123,26 +129,36 @@ SocketConnList::postRestart()
 void
 SocketConnList::registerNSData()
 {
-  ConnectionRewirer::instance().registerNSData();
+  char buff[10] = {0};
+  if (dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
+    ConnectionRewirer::instance().registerNSData();
 
-  ConnectionList::registerNSData();
+    ConnectionList::registerNSData();
+  }
 }
 
 void
 SocketConnList::sendQueries()
 {
-  ConnectionRewirer::instance().sendQueries();
-  ConnectionRewirer::instance().doReconnect();
-  ConnectionRewirer::destroy();
+  char buff[10] = {0};
+  if (dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
+    ConnectionRewirer::instance().sendQueries();
+    ConnectionRewirer::instance().doReconnect();
+    ConnectionRewirer::destroy();
 
-  ConnectionList::sendQueries();
+    ConnectionList::sendQueries();
+  }
 }
 
 void
 SocketConnList::refill(bool isRestart)
 {
-  KernelBufferDrainer::instance().refillAllSockets();
-  ConnectionList::refill(isRestart);
+  char buff[10] = {0};
+  if (!this->isPostRestart ||
+      dmtcp_get_restart_env("DMTCP_SKIP_REFILL", buff, 10) == -1) {
+    KernelBufferDrainer::instance().refillAllSockets();
+    ConnectionList::refill(isRestart);
+  }
 }
 
 void
