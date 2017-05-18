@@ -390,7 +390,8 @@ mtcp_write_non_rwx_and_anonymous_pages(int fd, Area *orig_area)
     size_t size;
     int is_zero;
     Area a = area;
-    if (dmtcp_infiniband_enabled && dmtcp_infiniband_enabled()) {
+    if ((dmtcp_infiniband_enabled && dmtcp_infiniband_enabled()) ||
+         strstr(area.name, "nvidia") != NULL) {
       size = area.size;
       is_zero = 0;
     } else {

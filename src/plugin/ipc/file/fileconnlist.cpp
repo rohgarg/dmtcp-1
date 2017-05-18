@@ -245,12 +245,14 @@ FileConnList::prepareShmList()
           strstr(area.name, "dmtcpSharedArea") != NULL ||
           strstr(area.name, "synchronization-log") != NULL ||
           strstr(area.name, "infiniband") != NULL ||
+          strstr(area.name, "nvidia") != NULL ||
           strstr(area.name, "synchronization-read-log") != NULL) {
         continue;
       }
 
       if (Util::isNscdArea(area) ||
           Util::isIBShmArea(area) ||
+          strstr(area.name, "nvidia") != NULL ||
           Util::isSysVShmArea(area)) {
         continue;
       }
@@ -510,6 +512,7 @@ FileConnList::processFileConnection(int fd,
   JASSERT(fstat(fd, &statbuf) == 0);
 
   if (strstr(device.c_str(), "infiniband/uverbs") ||
+      strstr(device.c_str(), "nvidia") ||
       strstr(device.c_str(), "uverbs-event")) {
     return;
   }
