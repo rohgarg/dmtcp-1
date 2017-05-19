@@ -434,6 +434,12 @@ FileConnList::scanForPreExisting()
        * a pre-existing device and ignore it for checkpoint-restart.
        */
       continue;
+    } else if (Util::strStartsWith(device, "/dev/nvidia")) {
+      /*
+       * Ignore the /dev/nvidia fd's. Regular file operations like lseek,
+       * etc. are illegal on such fd's.
+       */
+      continue;
     } else if (Util::strStartsWith(device, "/") && !Util::isPseudoTty(device)) {
       if (isRegularFile) {
         Connection *c = findDuplication(fd, device.c_str());
