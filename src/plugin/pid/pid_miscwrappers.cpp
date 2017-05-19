@@ -93,6 +93,11 @@ struct ThreadArg {
   void *arg;
   pid_t virtualTid;
   sem_t sem;
+  /*
+   * This indicates whether the given clone call originated from MTCP
+   * (postRestart() in libdmtcp, really) or not.
+   */
+  bool mtcpRestartingThreads;
 };
 
 // Invoked via __clone
@@ -106,7 +111,7 @@ clone_start(void *arg)
   void *thread_arg = threadArg->arg;
   pid_t virtualTid = threadArg->virtualTid;
 
-  if (dmtcp_is_running_state()) {
+  if (!threadArg->mtcpRestartingThreads) {
     dmtcpResetTid(virtualTid);
   }
 
@@ -134,18 +139,6 @@ __clone(int (*fn)(void *arg),
   pid_t virtualTid = -1;
   struct MtcpRestartThreadArg *mtcpRestartThreadArg;
 
-  if (!dmtcp_is_running_state()) {
-    mtcpRestartThreadArg = (struct MtcpRestartThreadArg *)arg;
-    arg = mtcpRestartThreadArg->arg;
-    virtualTid = mtcpRestartThreadArg->virtualTid;
-    if (virtualTid != VIRTUAL_TO_REAL_PID(virtualTid)) {
-      VirtualPidTable::instance().postRestart();
-    }
-  } else {
-    virtualTid = VirtualPidTable::instance().getNewVirtualTid();
-    VirtualPidTable::instance().writeVirtualTidToFileForPtrace(virtualTid);
-  }
-
   // We have to use DMTCP-specific memory allocator because using glibc:malloc
   // can interfere with user threads.
   // We use JALLOC_HELPER_FREE to free this memory in two places:
@@ -153,6 +146,22 @@ __clone(int (*fn)(void *arg),
   // 2.  near the beginnging of clone_start (wrapper for start_routine).
   struct ThreadArg *threadArg =
     (struct ThreadArg *)JALLOC_HELPER_MALLOC(sizeof(struct ThreadArg));
+  threadArg->mtcpRestartingThreads = false;
+
+  if (!dmtcp_is_running_state() &&
+      ((struct MtcpRestartThreadArg *)arg)->arg) {
+    mtcpRestartThreadArg = (struct MtcpRestartThreadArg *)arg;
+    arg = mtcpRestartThreadArg->arg;
+    virtualTid = mtcpRestartThreadArg->virtualTid;
+    if (virtualTid != VIRTUAL_TO_REAL_PID(virtualTid)) {
+      VirtualPidTable::instance().postRestart();
+    }
+    threadArg->mtcpRestartingThreads = true;
+  } else {
+    virtualTid = VirtualPidTable::instance().getNewVirtualTid();
+    VirtualPidTable::instance().writeVirtualTidToFileForPtrace(virtualTid);
+  }
+
   threadArg->fn = fn;
   threadArg->arg = arg;
   threadArg->virtualTid = virtualTid;
@@ -162,7 +171,7 @@ __clone(int (*fn)(void *arg),
   pid_t tid = _real_clone(clone_start, child_stack, flags, threadArg,
                           parent_tidptr, newtls, child_tidptr);
 
-  if (dmtcp_is_running_state()) {
+  if (threadArg->mtcpRestartingThreads) {
     VirtualPidTable::instance().readVirtualTidFromFileForPtrace();
   }
 
