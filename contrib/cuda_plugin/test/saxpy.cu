@@ -14,6 +14,8 @@ int main(void)
   float *x, *y, *d_x, *d_y;
   x = (float*)malloc(N*sizeof(float));
   y = (float*)malloc(N*sizeof(float));
+  printf("sleeping now to allow time for ckpting\n");
+  sleep(10);
 
   cudaMalloc(&d_x, N*sizeof(float));
   cudaMalloc(&d_y, N*sizeof(float));
@@ -22,8 +24,6 @@ int main(void)
     x[i] = 1.0f;
     y[i] = 2.0f;
   }
-  printf("sleeping now to allow time for ckpting\n");
-  sleep(10);
 
   cudaMemcpy(d_x, x, N*sizeof(float), cudaMemcpyHostToDevice);
   cudaMemcpy(d_y, y, N*sizeof(float), cudaMemcpyHostToDevice);
