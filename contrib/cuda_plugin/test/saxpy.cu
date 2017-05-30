@@ -11,13 +11,13 @@ void saxpy(int n, float a, float *x, float *y)
 int main(void)
 {
   int N = 1<<20;
-  float *x, *y, *d_x, *d_y;
+  float *x = NULL, *y = NULL, *d_x = NULL, *d_y = NULL;
   x = (float*)malloc(N*sizeof(float));
   y = (float*)malloc(N*sizeof(float));
-  printf("sleeping now to allow time for ckpting\n");
-  sleep(10);
 
   cudaMalloc(&d_x, N*sizeof(float));
+  printf("sleeping now to allow time for ckpting: %p\n", d_x);
+  sleep(10);
   cudaMalloc(&d_y, N*sizeof(float));
 
   for (int i = 0; i < N; i++) {

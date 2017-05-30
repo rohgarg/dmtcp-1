@@ -43,7 +43,7 @@ check: ${LIBNAME}.so test/saxpy
 
 # We link the library using C++ for compatibility with the main libdmtcp.so
 ${LIBNAME}.so: ${LIBOBJS}
-	${CXX} -cudart shared -shared -o $@ $^ -lcuda
+	${CXX} -cudart shared -shared -o $@ $^
 
 .c.o:
 	${CC} ${CFLAGS} -o $@ $<
