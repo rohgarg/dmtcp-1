@@ -460,6 +460,8 @@ void FileConnList::scanForPreExisting()
        * a pre-existing device and ignore it for checkpoint-restart.
        */
       continue;
+    } else if (Util::strStartsWith(device, "/dev/kgni")) {
+      continue;
     } else if (Util::strStartsWith(device, "/")) {
       if (isRegularFile) {
         Connection *c = findDuplication(fd, device.c_str());

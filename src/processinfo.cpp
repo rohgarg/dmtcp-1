@@ -612,6 +612,8 @@ void ProcessInfo::serialize(jalib::JBinarySerializer& o)
 {
   JSERIALIZE_ASSERT_POINT("ProcessInfo:");
   _savedBrk = (uint64_t) sbrk(0);
+
+#ifdef DMTCP_VERIFY_VDSO_LAYOUT
   _clock_gettime_offset = dmtcp_dlsym_lib_fnc_offset("linux-vdso",
                                                      "__vdso_clock_gettime");
   _getcpu_offset = dmtcp_dlsym_lib_fnc_offset("linux-vdso",
@@ -619,6 +621,7 @@ void ProcessInfo::serialize(jalib::JBinarySerializer& o)
   _gettimeofday_offset = dmtcp_dlsym_lib_fnc_offset("linux-vdso",
                                                     "__vdso_gettimeofday");
   _time_offset = dmtcp_dlsym_lib_fnc_offset("linux-vdso", "__vdso_time");
+#endif
 
   o & _elfType;
   o & _isRootOfProcessTree & _pid & _sid & _ppid & _gid & _fgid & _generation;

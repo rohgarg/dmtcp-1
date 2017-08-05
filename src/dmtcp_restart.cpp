@@ -138,6 +138,7 @@ class RestoreTarget
         .Text ( "checkpoint file missing" );
 
       _fd = readCkptHeader(_path, &_pInfo);
+#ifdef DMTCP_VERIFY_VDSO_LAYOUT
       ptrdiff_t clock_gettime_offset =
                             dmtcp_dlsym_lib_fnc_offset("linux-vdso",
                                                        "__vdso_clock_gettime");
@@ -154,6 +155,7 @@ class RestoreTarget
                     " the host where the checkpoint image was generated. "
                     "Restart may fail if the program calls a function in to"
                     " vDSO, like, gettimeofday(), clock_gettime(), etc.");
+#endif
       JTRACE("restore target") (_path) (_pInfo.numPeers()) (_pInfo.compGroup());
       JASSERT(_pInfo.getMaxUserFd() < PROTECTED_FD_START)
              (_pInfo.getMaxUserFd())(PROTECTED_FD_START)
