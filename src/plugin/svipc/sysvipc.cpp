@@ -256,6 +256,13 @@ huge_memcpy(char *dest, char *src, size_t size)
 static SysVShm *sysvShmInst = NULL;
 static SysVSem *sysvSemInst = NULL;
 static SysVMsq *sysvMsqInst = NULL;
+
+int
+dmtcp_virtual_to_real_shmid(int virtualShmId)
+{
+  return VIRTUAL_TO_REAL_SHM_ID(virtualShmId);
+}
+
 SysVShm&
 SysVShm::instance()
 {
