@@ -159,8 +159,6 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
       newargv[1] = argv[2];
       newargv[2] = argv[3];
       newargv[3] = argv[4+rank];
-      printf("%s, %s, %s, %s\n", newargv[0], newargv[1], newargv[2], newargv[3]);
-      fflush(stdout);
       execvp(newargv[0], (char* const*) &newargv);
     } else {
       printf("ERROR - NOT A LAUNCH OR RESUME\n");

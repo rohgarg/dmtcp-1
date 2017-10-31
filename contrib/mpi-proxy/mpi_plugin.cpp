@@ -93,7 +93,8 @@ MPI_Comm_rank(int group, int *world_rank)
   status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   if (status == MPI_SUCCESS) {
     *world_rank = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-    gworld_rank = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+    JTRACE("*** GOT RANK\n");
+    gworld_rank = *world_rank;
   }
   return status;
 }
@@ -134,14 +135,15 @@ pre_ckpt_update_ckpt_dir()
     baseDir = ckptDir;
   }
   dmtcp::ostringstream o;
-  o << baseDir << "/ckpt_rank_" << gworld_rank ;
+  o << baseDir << "/ckpt_rank_" << gworld_rank;
   dmtcp_set_ckpt_dir(o.str().c_str());
 }
 
 static DmtcpBarrier mpiPluginBarriers[] = {
   //{ DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt, "checkpoint" },
   //{ DMTCP_GLOBAL_BARRIER_RESTART, restart_proxy, "restart" },
-  { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_update_ckpt_dir, "update-ckpt-dir-by-rank" }
+  { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_update_ckpt_dir,
+    "update-ckpt-dir-by-rank" }
 };
 
 DmtcpPluginDescriptor_t mpi_plugin = {
