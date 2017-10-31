@@ -36,7 +36,7 @@ check: ${LIBNAME}.so tests mpi_proxy
 	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_launch -i 4 --coord-port ${DEMO_PORT} \
 	  --with-plugin $$PWD/${LIBNAME}.so test/mpi_hello_world
 	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_restart --coord-port ${DEMO_PORT} \
-	  ckpt_*.dmtcp
+	  ckpt_rank_0/ckpt_*.dmtcp
 
 mpi_proxy.o: mpi_proxy.cpp
 	${MPICC} -I${DMTCP_INCLUDE} -c -g3 -O0 -o $@ $<
