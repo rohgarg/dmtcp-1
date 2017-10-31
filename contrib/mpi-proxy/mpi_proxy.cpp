@@ -23,11 +23,6 @@
 
 int listfd = 0;
 
-std::map<int, int> vranks;
-int my_vrank = 0;
-int my_vsize = 0;
-int my_rsize = 0;
-
 int serial_printf(const char * msg)
 {
   printf("%s", msg);
@@ -84,26 +79,10 @@ void MPIProxy_Get_CommRank(int connfd)
   int retval = 0;
 
   group = MPIProxy_Receive_Arg_Int(connfd);
-
-  if (vranks.size() == 0) {
-    // mapping hasn't been done, this is a launch
-    retval = MPI_Comm_rank(group, &commrank);
-    MPIProxy_Return_Answer(connfd, retval);
-    if (!retval)
-      MPIProxy_Send_Arg_Int(connfd, commrank);
-  } else {
-    MPIProxy_Return_Answer(connfd, 0);
-    MPIProxy_Send_Arg_Int(connfd, my_vrank);
-  }
-}
-
-void MPIProxy_Set_CommRank(int connfd)
-{
-  int real;
-  my_vrank = MPIProxy_Receive_Arg_Int(connfd);
-  MPI_Comm_rank(MPI_COMM_WORLD, &real);
-  vranks[my_vrank] = real;
-  MPIProxy_Return_Answer(connfd, 0);
+  retval = MPI_Comm_rank(group, &commrank);
+  MPIProxy_Return_Answer(connfd, retval);
+  if (!retval)
+    MPIProxy_Send_Arg_Int(connfd, commrank);
 }
 
 void MPIProxy_Finalize(int connfd)
@@ -136,10 +115,6 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Get_CommRank:
       serial_printf("PROXY(Get_CommRank)");
       MPIProxy_Get_CommRank(connfd);
-      break;
-    case MPIProxy_Cmd_Set_CommRank:
-      serial_printf("PROXY(Set_CommRank)");
-      MPIProxy_Set_CommRank(connfd);
       break;
     case MPIProxy_Cmd_Finalize:
       serial_printf("PROXY(Finalize)");
@@ -178,6 +153,10 @@ void launch_or_restart(pid_t pid, int argc, char *argv[])
       execvp(s[0], &s[0]);
     } else if (strstr(argv[1], "dmtcp_restart")) {
       serial_printf("Restarting");
+      // TODO: 
+      // MPI_Init and Get Rank
+      // Select correct image from arglist
+      // re-form arglist
       execvp(argv[1], &argv[1]);
     } else {
       printf("ERROR - NOT A LAUNCH OR RESUME\n");

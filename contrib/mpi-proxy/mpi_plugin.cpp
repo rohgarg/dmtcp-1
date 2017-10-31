@@ -1,3 +1,5 @@
+/* CopyLeft Gregory Price (2017) */
+
 #include <sys/wait.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -17,20 +19,6 @@
 #include "protectedfds.h"
 
 // #define DEBUG
-
-struct VirtualMPIInfo
-{
-  int world_rank;
-  int name_len;
-  char *processor_name;
-};
-
-struct VirtualMPIInfo virtinfo;
-
-int replay_commands[1024];
-int replay_count = 0;
-int proxy_started = 0;
-bool proxy_inited = false;
 
 void mpi_proxy_wait_for_instructions();
 
@@ -67,53 +55,6 @@ int exec_proxy_cmd(int pcmd)
   return answer;
 }
 
-void setup_virtualization_info(bool islaunch)
-{
-  int status = 0;
-
-  if (islaunch) {
-    int world_rank = 0;
-    // On launch, we need to record this info in order
-    // to successfully restart
-    status = MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
-    // TODO: Error check
-    virtinfo.world_rank = world_rank;
-  }
-  // On restart, we just need to set our proxy up with the
-  // correct virtual values
-  JNOTE("SET RANK\n");
-  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Set_CommRank);
-  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, virtinfo.world_rank);
-  status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-  // TODO: error checking
-  JASSERT(status == MPI_SUCCESS);
-
-  JTRACE("DONE SET\n");
-}
-
-// Proxy Setup
-void restart_proxy()
-{
-  int i = 0;
-  int retval = 0;
-
-  // We're resuming from a restart, set it all up
-  JTRACE("PLUGIN: Restart - Initialize Proxy Connection");
-  // Replay any replay packets, this catchs INIT on restart
-  for (i = 0; i < replay_count; i++)
-  {
-    JTRACE("PLUGIN: Replaying command")(replay_commands[i]);
-    exec_proxy_cmd(replay_commands[i]);
-    i++;
-  }
-  proxy_started = 1;
-
-  // Then configure the proxy with the cached virtual info.
-  JTRACE("PLUGIN: Configuring Proxy\n");
-  setup_virtualization_info(false);
-  return;
-}
-
 void close_proxy(void)
 {
   JTRACE("PLUGIN: Close Proxy Connection\n");
@@ -121,23 +62,13 @@ void close_proxy(void)
   proxy_started = 0;
 }
 
-void add_replay_command(int pcmd)
-{
-  replay_commands[replay_count] = pcmd;
-  replay_count++;
-}
-
 /* hello-world */
 EXTERNC int
 MPI_Init(int *argc, char ***argv)
 {
-  int retval = 0;
-  add_replay_command(MPIProxy_Cmd_Init);
   JTRACE("PLUGIN: MPI_Init!\n");
   retval = exec_proxy_cmd(MPIProxy_Cmd_Init);
-  proxy_started = true;
-  proxy_inited = true;
-  setup_virtualization_info(true);
+  return retval;
 }
 
 EXTERNC int
@@ -169,8 +100,6 @@ MPI_Comm_rank(int group, int *world_rank)
 EXTERNC int
 MPI_Finalize(void)
 {
-  add_replay_command(MPIProxy_Cmd_Finalize);
-  JTRACE("PLUGIN: MPI_Finalize\n");
   return exec_proxy_cmd(MPIProxy_Cmd_Finalize);
 }
 
