@@ -134,7 +134,7 @@ DONE:
   return;
 }
 
-void launch_or_restart(pid_t pid, int argc, char *argv[])
+void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
 {
   int i = 0;
   if (pid == 0) {
@@ -153,11 +153,15 @@ void launch_or_restart(pid_t pid, int argc, char *argv[])
       execvp(s[0], &s[0]);
     } else if (strstr(argv[1], "dmtcp_restart")) {
       serial_printf("Restarting");
-      // TODO: 
-      // MPI_Init and Get Rank
-      // Select correct image from arglist
-      // re-form arglist
-      execvp(argv[1], &argv[1]);
+      // TODO: Select correct image from arglist, re-form arglist
+      char * newargv[5] = {NULL, NULL, NULL, NULL, NULL};
+      newargv[0] = argv[1];
+      newargv[1] = argv[2];
+      newargv[2] = argv[3];
+      newargv[3] = argv[4+rank];
+      printf("%s, %s, %s, %s\n", newargv[0], newargv[1], newargv[2], newargv[3]);
+      fflush(stdout);
+      execvp(newargv[0], (char* const*) &newargv);
     } else {
       printf("ERROR - NOT A LAUNCH OR RESUME\n");
     }
@@ -177,15 +181,27 @@ int main(int argc, char *argv[])
   pid_t pid = fork();
   if (pid > 0) {
     int status;
+    if (strstr(argv[1], "dmtcp_restart"))
+    {
+      int rank = 0;
+      MPI_Init(NULL, NULL);
+      MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+      write(debugPipe[1], &rank, sizeof(int));
+      // FIXME: wait a second to let child get the rank
+      sleep(1);
+    }
     close(debugPipe[1]);
     proxy(debugPipe[0]);
     waitpid(pid, &status, 0);
   } else if (pid == 0) {
+    unsigned int restart_rank = 0;
+    if (strstr(argv[1], "dmtcp_restart"))
+      read(debugPipe[0], &restart_rank, sizeof(int));
     close(debugPipe[0]);
     assert(dup2(debugPipe[1], PROTECTED_MPI_PROXY_FD) ==
            PROTECTED_MPI_PROXY_FD);
     close(debugPipe[1]);
-    launch_or_restart(pid, argc, argv);
+    launch_or_restart(pid, restart_rank, argc, argv);
   } else {
     assert(0);
   }

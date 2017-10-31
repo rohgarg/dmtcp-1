@@ -38,6 +38,10 @@ int main(int argc, char** argv)
   printf("Hello world from processor %s, rank %d out of %d processors\n",
          processor_name, world_rank, world_size);
 
+  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  printf("Hello world from processor %s, rank %d out of %d processors\n",
+         processor_name, world_rank, world_size);
+
   // Finalize the MPI environment. No more MPI calls can be made after this
   MPI_Finalize();
 }
