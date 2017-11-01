@@ -25,7 +25,7 @@ int listfd = 0;
 
 int serial_printf(const char * msg)
 {
-  printf("%s", msg);
+  printf("%s\n", msg);
   fflush(stdout);
 }
 
@@ -143,7 +143,9 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
       // go ahead and exec into provided arglist
       serial_printf("Starting");
       std::vector<char*> s;
-#if DEBUGGING
+#ifdef DEBUGGING
+      s.push_back(const_cast<char*>("xterm"));
+      s.push_back(const_cast<char*>("-e"));
       s.push_back(const_cast<char*>("gdb"));
       s.push_back(const_cast<char*>("--args"));
 #endif
@@ -157,8 +159,9 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
       char * newargv[5] = {NULL, NULL, NULL, NULL, NULL};
       newargv[0] = argv[1];
       newargv[1] = argv[2];
-      newargv[2] = argv[3];
-      newargv[3] = argv[4+rank];
+      newargv[2] = argv[3 + rank];
+      // newargv[2] = argv[3];
+      // newargv[3] = argv[4+rank];
       execvp(newargv[0], (char* const*) &newargv);
     } else {
       printf("ERROR - NOT A LAUNCH OR RESUME\n");
@@ -173,32 +176,31 @@ int main(int argc, char *argv[])
   // 0 is read
   // 1 is write
   int debugPipe[2];
+  int rank = 0;
+  int restart_rank = -1;
 
   socketpair(AF_UNIX, SOCK_STREAM, 0, debugPipe);
 
   pid_t pid = fork();
   if (pid > 0) {
     int status;
-    if (strstr(argv[1], "dmtcp_restart"))
-    {
-      int rank = 0;
+    if (strstr(argv[1], "dmtcp_restart")) {
       MPI_Init(NULL, NULL);
       MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      write(debugPipe[1], &rank, sizeof(int));
+      write(debugPipe[0], &rank, sizeof(int));
       // FIXME: wait a second to let child get the rank
       sleep(1);
     }
-    close(debugPipe[1]);
     proxy(debugPipe[0]);
     waitpid(pid, &status, 0);
   } else if (pid == 0) {
-    unsigned int restart_rank = 0;
-    if (strstr(argv[1], "dmtcp_restart"))
-      read(debugPipe[0], &restart_rank, sizeof(int));
-    close(debugPipe[0]);
     assert(dup2(debugPipe[1], PROTECTED_MPI_PROXY_FD) ==
            PROTECTED_MPI_PROXY_FD);
     close(debugPipe[1]);
+    if (strstr(argv[1], "dmtcp_restart")) {
+      read(PROTECTED_MPI_PROXY_FD, &restart_rank, sizeof(int));
+    }
+    assert (restart_rank != -1);
     launch_or_restart(pid, restart_rank, argc, argv);
   } else {
     assert(0);
