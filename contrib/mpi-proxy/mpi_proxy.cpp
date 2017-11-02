@@ -199,8 +199,8 @@ int main(int argc, char *argv[])
     close(debugPipe[1]);
     if (strstr(argv[1], "dmtcp_restart")) {
       read(PROTECTED_MPI_PROXY_FD, &restart_rank, sizeof(int));
+      assert(restart_rank != -1);
     }
-    assert (restart_rank != -1);
     launch_or_restart(pid, restart_rank, argc, argv);
   } else {
     assert(0);
