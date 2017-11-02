@@ -210,18 +210,16 @@ SocketConnList::scanForPreExisting()
     string device = jalib::Filesystem::GetDeviceName(fd);
 
     JTRACE("scanning pre-existing device") (fd) (device);
-    if (device ==
-        jalib::Filesystem::GetControllingTerm()) {} else if (dmtcp_is_bq_file &&
-                                                             dmtcp_is_bq_file(
-                                                               device.c_str()))
-    {} else if (fd <=
-                2)
-    {} else if (Util::strStartsWith(device, "/")) {} else {
+    if (device == jalib::Filesystem::GetControllingTerm()) {
+    } else if (dmtcp_is_bq_file && dmtcp_is_bq_file(device.c_str())) {
+    } else if (fd <= 2) {
+    } else if (Util::strStartsWith(device, "/")) {
+    } else {
       JNOTE("found pre-existing socket... will not be restored")
         (fd) (device);
-      TcpConnection *con = new TcpConnection(0, 0, 0);
-      con->markPreExisting();
-      add(fd, con);
+      // TcpConnection *con = new TcpConnection(0, 0, 0);
+      // con->markPreExisting();
+      // add(fd, con);
     }
   }
 }
