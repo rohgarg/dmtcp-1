@@ -33,9 +33,9 @@ check: ${LIBNAME}.so tests mpi_proxy
 	# Kill an old coordinator on this port if present, just in case.
 	@ ${DMTCP_ROOT}/bin/dmtcp_command --quit --quiet \
 	  --coord-port ${DEMO_PORT} 2>/dev/null || true
-	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_launch -i 4 --coord-port ${DEMO_PORT} \
+	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_launch -i 4 -j \
 	  --with-plugin $$PWD/${LIBNAME}.so test/mpi_hello_world
-	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_restart --coord-port ${DEMO_PORT} \
+	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_restart -j \
 	  ckpt_rank_0/ckpt_*.dmtcp
 
 mpi_proxy.o: mpi_proxy.cpp

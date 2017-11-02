@@ -1,1 +1,1 @@
-mpirun -n 2 ./mpi_proxy dmtcp_restart --coord-port 7779 ckpt_rank_0/* ckpt_rank_1/*
+mpirun -n 2 ./mpi_proxy ../../bin/dmtcp_restart -j ckpt_rank_0/* ckpt_rank_1/*
