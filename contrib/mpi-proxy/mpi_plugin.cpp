@@ -34,9 +34,23 @@ int Receive_Int_From_Proxy(int connfd)
     return retval;
 }
 
+int Receive_Buf_From_Proxy(int connfd, void* buf, int size)
+{
+  int status = 0;
+  status = read(connfd, buf, size);
+  return status;
+}
+
 int Send_Int_To_Proxy(int connfd, int arg)
 {
     int status = write(connfd, &arg, sizeof(int));
+    // TODO: error check
+    return status;
+}
+
+int Send_Buf_To_Proxy(int connfd, const void* buf, int size)
+{
+    int status = write(connfd, buf, size);
     // TODO: error check
     return status;
 }
@@ -95,6 +109,86 @@ MPI_Comm_rank(int group, int *world_rank)
     *world_rank = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
     JTRACE("*** GOT RANK\n");
     gworld_rank = *world_rank;
+  }
+  return status;
+}
+
+EXTERNC int
+MPI_Type_size(MPI_Datatype datatype, int *size)
+{
+  int status = 0;
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Type_size);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, datatype);
+
+  // get the status
+  status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  if (status == MPI_SUCCESS) // if successful, ge the size
+    *size = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+
+  return status;
+}
+
+EXTERNC int
+MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
+          MPI_Comm comm)
+{
+  int status = 0xFFFFFFFF;
+  int size = 0;
+
+  status = MPI_Type_size(datatype, &size);
+  if (status == MPI_SUCCESS)
+  {
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Send);
+
+    // Buf part
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count * size);
+    write(PROTECTED_MPI_PROXY_FD, buf, count*size);
+
+    // rest of stuff
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)datatype);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, dest);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, tag);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+
+    // Get the status
+    status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  }
+  return status;
+}
+
+EXTERNC int
+MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
+          MPI_Comm comm, MPI_Status *mpi_status)
+{
+  int status = 0xFFFFFFFF;
+  int size = 0;
+
+  status = MPI_Type_size(datatype, &size);
+  if (status == MPI_SUCCESS)
+  {
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Recv);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)datatype);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, source);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, tag);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+    if (mpi_status == MPI_STATUS_IGNORE)
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
+    else
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0x0);
+
+
+    // Buffer and Status are received after the status is confirmed
+    status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+    if (status == 0)
+    {
+      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, size);
+      if (mpi_status != MPI_STATUS_IGNORE)
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                mpi_status,
+                                sizeof(MPI_Status));
+    }
   }
   return status;
 }

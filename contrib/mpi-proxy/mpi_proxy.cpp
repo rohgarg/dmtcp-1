@@ -21,12 +21,17 @@
 #include "dmtcp.h"
 #include "util.h"
 
+// #define DEBUG_PRINTS
+
+int g_commrank = 0;
 int listfd = 0;
 
 int serial_printf(const char * msg)
 {
+#ifdef DEBUG_PRINTS
   printf("%s\n", msg);
   fflush(stdout);
+#endif
 }
 
 int MPIProxy_Receive_Arg_Int(int connfd)
@@ -45,10 +50,19 @@ int MPIProxy_Send_Arg_Int(int connfd, int arg)
   return status;
 }
 
+int MPIProxy_Send_Arg_Buf(int connfd, void *buf, int size)
+{
+  int status = write(connfd, buf, size);
+  // TODO: error check
+  return status;
+}
+
 void MPIProxy_Return_Answer(int connfd, int answer)
 {
+#ifdef DEBUG_PRINTS
   printf("Returned %08x\n", answer);
   fflush(stdout);
+#endif
   write(connfd, &answer, 4);
   return;
 }
@@ -68,7 +82,7 @@ void MPIProxy_Get_CommSize(int connfd)
   group = MPIProxy_Receive_Arg_Int(connfd);
   retval = MPI_Comm_size(group, &commsize);
   MPIProxy_Return_Answer(connfd, retval);
-  if (!retval)
+  if (retval == MPI_SUCCESS)
     MPIProxy_Send_Arg_Int(connfd, commsize);
 }
 
@@ -80,10 +94,114 @@ void MPIProxy_Get_CommRank(int connfd)
 
   group = MPIProxy_Receive_Arg_Int(connfd);
   retval = MPI_Comm_rank(group, &commrank);
+  g_commrank = commrank;
   MPIProxy_Return_Answer(connfd, retval);
-  if (!retval)
+  if (retval == MPI_SUCCESS)
     MPIProxy_Send_Arg_Int(connfd, commrank);
 }
+
+void MPIProxy_Type_size(int connfd)
+{
+  int retval = 0;
+  int size = 0;
+  MPI_Datatype datatype;
+  datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
+
+  // Do the actual Type_size call
+  retval = MPI_Type_size(datatype, &size);
+
+  MPIProxy_Return_Answer(connfd, retval);
+  if (retval == MPI_SUCCESS)
+    MPIProxy_Send_Arg_Int(connfd, size);
+}
+
+void MPIProxy_Send(int connfd)
+{
+  int retval = 0;
+  void * buf = NULL;
+  int size = 0;
+  int count, dest, tag;
+  MPI_Datatype datatype;
+  MPI_Comm comm;
+
+  // Collect the arguments
+  size = MPIProxy_Receive_Arg_Int(connfd);
+
+  // Buffer read
+  buf = malloc(size);
+  read(connfd, buf, size);
+
+  // rest of the arguments
+  count = MPIProxy_Receive_Arg_Int(connfd);
+  datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
+  dest = MPIProxy_Receive_Arg_Int(connfd);
+  tag = MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  // Do the send
+  retval = MPI_Send(buf, count, datatype, dest, tag, comm);
+
+  if (retval != MPI_SUCCESS)
+  {
+    printf("Proxy - SEND FAILED\n");
+    fflush(stdout);
+  }
+
+  free(buf); // TODO: Should I free here?
+  MPIProxy_Return_Answer(connfd, retval);
+}
+
+void MPIProxy_Recv(int connfd)
+{
+  int status = 0;
+  void * buf;
+  int size = 0;
+  int count, source, tag;
+  MPI_Datatype datatype;
+  MPI_Comm comm;
+  int mpi_status_arg;
+  MPI_Status *mpi_status;
+
+  // Collect the arguments
+  count = MPIProxy_Receive_Arg_Int(connfd);
+  datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
+  source = MPIProxy_Receive_Arg_Int(connfd);
+  tag = MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  mpi_status_arg = MPIProxy_Receive_Arg_Int(connfd);
+  if (mpi_status_arg == 0xFFFFFFFF)
+  {
+    mpi_status = MPI_STATUS_IGNORE;
+  }
+  else
+  {
+    // TODO: ????
+    mpi_status = NULL;
+  }
+
+  // Do the receive
+  MPI_Type_size(datatype, &size);
+  buf = malloc(count * size);
+
+  // TODO: Check that mpi_status is correctly used here
+  serial_printf("PROXY: RECIEVING - ");
+  status = MPI_Recv(buf, count, datatype, source, tag, comm, mpi_status);
+  serial_printf("\tDONE");
+
+  // Return receive's status
+  MPIProxy_Return_Answer(connfd, status);
+  if (status == MPI_SUCCESS)
+  {
+    MPIProxy_Send_Arg_Buf(connfd, buf, size);
+    // TODO: Check that mpi_status is correctly used here
+    if (mpi_status != MPI_STATUS_IGNORE)
+      MPIProxy_Send_Arg_Buf(connfd, &mpi_status, sizeof(mpi_status));
+  }
+
+  free(buf);
+}
+
 
 void MPIProxy_Finalize(int connfd)
 {
@@ -109,12 +227,24 @@ void proxy(int connfd)
       MPIProxy_Init(connfd);
       break;
     case MPIProxy_Cmd_Get_CommSize:
-      serial_printf("PROXY(Get_CommSize) ");
+      serial_printf("PROXY(Get_CommSize) - ");
       MPIProxy_Get_CommSize(connfd);
       break;
     case MPIProxy_Cmd_Get_CommRank:
-      serial_printf("PROXY(Get_CommRank)");
+      serial_printf("PROXY(Get_CommRank) - ");
       MPIProxy_Get_CommRank(connfd);
+      break;
+    case MPIProxy_Cmd_Send:
+      serial_printf("PROXY(Send) - ");
+      MPIProxy_Send(connfd);
+      break;
+    case MPIProxy_Cmd_Recv:
+      serial_printf("PROXY(Recv) - ");
+      MPIProxy_Recv(connfd);
+      break;
+    case MPIProxy_Cmd_Type_size:
+      serial_printf("PROXY(Type_size) - ");
+      MPIProxy_Type_size(connfd);
       break;
     case MPIProxy_Cmd_Finalize:
       serial_printf("PROXY(Finalize)");

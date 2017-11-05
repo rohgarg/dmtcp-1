@@ -1,1 +1,1 @@
-mpirun -n 2 ./mpi_proxy ../../bin/dmtcp_launch -i 4 -j --with-plugin $PWD/libdmtcp_mpi-proxy.so test/mpi_hello_world
+mpirun -n 2 ./mpi_proxy ../../bin/dmtcp_launch -i 4 -j --with-plugin $PWD/libdmtcp_mpi-proxy.so test/hello/mpi_hello_world

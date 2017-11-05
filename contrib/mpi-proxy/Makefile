@@ -27,14 +27,15 @@ DEMO_PORT=7781
 default: ${LIBNAME}.so mpi_proxy
 
 tests:
-	cd test; make
+	cd test/hello; make; cd ../../
+	cd test/send_recv; make; cd ../../
 
 check: ${LIBNAME}.so tests mpi_proxy
 	# Kill an old coordinator on this port if present, just in case.
 	@ ${DMTCP_ROOT}/bin/dmtcp_command --quit --quiet \
 	  --coord-port ${DEMO_PORT} 2>/dev/null || true
 	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_launch -i 4 -j \
-	  --with-plugin $$PWD/${LIBNAME}.so test/mpi_hello_world
+	  --with-plugin $$PWD/${LIBNAME}.so test/hello/mpi_hello_world
 	mpirun -n 1 ./mpi_proxy ${DMTCP_ROOT}/bin/dmtcp_restart -j \
 	  ckpt_rank_0/ckpt_*.dmtcp
 
@@ -59,7 +60,8 @@ tidy:
 clean: tidy
 	rm -f ${LIBOBJS} ${LIBNAME}.so
 	rm -f mpi_proxy mpi_proxy.o
-	cd test; make clean
+	cd test/hello; make clean; cd ../../
+	cd test/send_recv; make clean; cd ../../
 
 distclean: clean
 	rm -f ${LIBNAME}.so *~ .*.swp dmtcp_restart_script*.sh ckpt_*.dmtcp
