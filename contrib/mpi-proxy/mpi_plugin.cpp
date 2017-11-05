@@ -233,9 +233,44 @@ pre_ckpt_update_ckpt_dir()
   dmtcp_set_ckpt_dir(o.str().c_str());
 }
 
+static void
+pre_ckpt_drain_data_from_proxy()
+{
+  // One way to do this is to have two global barriers:
+  //  1) Each rank MPI_Sends a known "cookie"
+  //  2) Each rank receives all the packets from its proxy
+  //     until it sees the known cookie
+  //
+  // The other way to do this is to have the proxy keep track
+  // of undelivered packets (i.e., packets that have not been consumed
+  // by the rank). This way we can have just a single global pre-ckpt
+  // barrier, where each rank will receive all undelivered packets into
+  // a local "vector<buffer>"
+  //
+  // The problem with the first approach is that we have to worry about
+  // communication channels between ranks. MPI guarantees no-overtaking
+  //  (i.e., FIFO) between ranks. However, I suspect that the no-overtaking
+  // rule is not guaranteed across multiple communication channels that
+  // might exists between two ranks.
+  //
+  // The problem with the second approach is that we introduce some
+  // state in the proxy. Note that with the first approach, the proxy can
+  // continue to be stateless and dumb.
+  //
+  // In both the approaches, the resume/restart part remains the same:
+  // On resume/restart, MPI_Recv() calls from the user threads
+  // must be serviced from the local buffers, until the buffers
+  // have been emptied. When the local buffers have been emptied,
+  // the MPI_Recv calls can/should be forwarded to the proxy.
+
+  // Proxy_Receive()
+}
+
 static DmtcpBarrier mpiPluginBarriers[] = {
   //{ DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt, "checkpoint" },
   //{ DMTCP_GLOBAL_BARRIER_RESTART, restart_proxy, "restart" },
+  { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_drain_data_from_proxy,
+    "Drain-Data-From-Proxy" },
   { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_update_ckpt_dir,
     "update-ckpt-dir-by-rank" }
 };
