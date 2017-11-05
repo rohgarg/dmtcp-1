@@ -14,13 +14,15 @@
 int main(int argc, char** argv) {
   int size = 0;
   int status = 0;
+  int count = 0;
   // Initialize the MPI environment
   MPI_Init(NULL, NULL);
-  while (1)
+  while (count < 20)
   {
     status = MPI_Type_size(MPI_INT, &size);
     if (status != MPI_SUCCESS)
       printf("%08x - %d\n", status, size);
+    count++;
   }
   MPI_Finalize();
 }
