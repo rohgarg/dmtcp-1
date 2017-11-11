@@ -11,6 +11,7 @@
 #include <string.h>
 #include <sys/types.h>
 #include <mpi.h>
+#include <vector>
 #include "mpi_proxy.h"
 
 #include "config.h"
@@ -22,6 +23,22 @@
 // #define DEBUG
 
 int gworld_rank = 0;
+
+typedef struct Message
+{
+  void * buf;
+  int count;
+  MPI_Datatype datatype;
+  MPI_Comm comm;
+  MPI_Status status;
+  int size;
+} Message;
+
+std::vector<Message *>gmessage_queue;
+
+#define MPI_PLUGIN_PROXY_PACKET_WAITING 0
+#define MPI_PLUGIN_BUFFERED_PACKET_WAITING 1
+#define MPI_PLUGIN_NO_PACKET_WAITING 2
 
 void mpi_proxy_wait_for_instructions();
 
@@ -78,6 +95,97 @@ void close_proxy(void)
   exec_proxy_cmd(MPIProxy_Cmd_Shutdown_Proxy);
 }
 
+
+bool matching_buffered_packet(int source, int tag, MPI_Comm comm)
+{
+  std::vector<Message *>::iterator itt;
+  for(itt = gmessage_queue.begin(); itt != gmessage_queue.end(); itt++)
+  {
+    Message * msg = *itt;
+    if (((msg->status.MPI_SOURCE == source) | (source == MPI_ANY_SOURCE))
+        && ((msg->status.MPI_TAG == tag) | (tag == MPI_ANY_TAG))
+        && ((msg->comm == comm)))
+    {
+      return true;
+    }
+  }
+  return false;
+}
+
+int mpi_plugin_is_packet_waiting(int source, int tag, MPI_Comm comm, int *flag,
+                                  MPI_Status *mpi_status, int *wait_type)
+{
+  int status = 0;
+  MPI_Status ignore;
+  if (matching_buffered_packet(source, tag, comm))
+  {
+    *flag = true;
+    *wait_type = MPI_PLUGIN_BUFFERED_PACKET_WAITING;
+  }
+  else
+  {
+    // MPI_Proxy_Iprobe
+    // send command and arguments
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Iprobe);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, source);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, tag);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, comm);
+
+    // receive answer
+    status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+    if (status == 0)
+    {
+      *flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, mpi_status,
+                              sizeof(MPI_Status));
+    }
+    // Return the correct wait type (either proxy packet waiting, or no packet)
+    if (*flag)
+      *wait_type = MPI_PLUGIN_PROXY_PACKET_WAITING;
+    else
+      *wait_type = MPI_PLUGIN_NO_PACKET_WAITING;
+  }
+
+  return status;
+}
+
+int mpi_plugin_return_buffered_packet(void *buf, int count, int datatype,
+                                      int source, int tag, MPI_Comm comm,
+                                      MPI_Status *mpi_status, int size)
+{
+  int status = -1; // FIXME
+  int cpysize;
+  int element = 0;
+  std::vector<Message *>::iterator itt;
+  Message * msg;
+  for(itt = gmessage_queue.begin(); itt != gmessage_queue.end(); itt++)
+  {
+    msg = *itt;
+    if (((msg->status.MPI_SOURCE == source) | (source == MPI_ANY_SOURCE))
+        && ((msg->status.MPI_TAG == tag) | (tag == MPI_ANY_TAG))
+        && ((msg->comm == comm)))
+    {
+      break;
+    }
+    element++;
+  }
+  if (itt == gmessage_queue.end())
+  {
+    // this should never happen!
+    return -1;
+  }
+
+  cpysize = (size < msg->size) ? size: msg->size;
+  memcpy(buf, msg->buf, cpysize);
+  gmessage_queue.erase(gmessage_queue.begin()+element);
+  free(msg->buf);
+  free(msg);
+  // TODO: Actually handle MPI_Status that isn't MPI_STATUS_IGNORE
+
+  return MPI_SUCCESS;
+}
+
+
 /* hello-world */
 EXTERNC int
 MPI_Init(int *argc, char ***argv)
@@ -87,6 +195,8 @@ MPI_Init(int *argc, char ***argv)
   JTRACE("PLUGIN: MPI_Init!\n");
   status = exec_proxy_cmd(MPIProxy_Cmd_Init);
   DMTCP_PLUGIN_ENABLE_CKPT();
+  // get our rank;
+  MPI_Comm_rank(MPI_COMM_WORLD, &gworld_rank);
   return status;
 }
 
@@ -145,8 +255,9 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
   int status = 0xFFFFFFFF;
   int size = 0;
 
-  DMTCP_PLUGIN_DISABLE_CKPT();
   status = MPI_Type_size(datatype, &size);
+
+  DMTCP_PLUGIN_DISABLE_CKPT();
   if (status == MPI_SUCCESS)
   {
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Send);
@@ -166,56 +277,6 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   }
   DMTCP_PLUGIN_ENABLE_CKPT();
-  return status;
-}
-
-#define MPI_PLUGIN_PROXY_PACKET_WAITING 0
-#define MPI_PLUGIN_BUFFERED_PACKET_WAITING 1
-#define MPI_PLUGIN_NO_PACKET_WAITING 2
-
-int mpi_plugin_is_packet_waiting(int source, int tag, MPI_Comm comm, int *flag,
-                                  MPI_Status *mpi_status, int *wait_type)
-{
-  int status = 0;
-  if (false) // TODO: buffered packet waiting
-  {
-    status = -1;
-    *wait_type = MPI_PLUGIN_BUFFERED_PACKET_WAITING;
-  }
-  else
-  {
-    // TODO: MPI_Proxy_Iprobe
-    // send command and arguments
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Iprobe);
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, source);
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, tag);
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, comm);
-
-    // receive answer
-    status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-    if (status == 0)
-    {
-      *flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                              mpi_status,
-                              sizeof(MPI_Status));
-    }
-    // Return the correct wait type (either proxy packet waiting, or no packet)
-    if (*flag)
-      *wait_type = MPI_PLUGIN_PROXY_PACKET_WAITING;
-    else
-      *wait_type = MPI_PLUGIN_NO_PACKET_WAITING;
-  }
-
-  return status;
-}
-
-int mpi_plugin_return_buffered_packet(void *buf, int count, int datatype,
-                                      int source, int tag, MPI_Comm comm,
-                                      MPI_Status *mpi_status, int size)
-{
-  int status = -1; // FIXME
-  // TODO
   return status;
 }
 
@@ -253,14 +314,13 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 {
   int status = 0xFFFFFFFF;
   int size = 0;
+  bool done = false;
   MPI_Status iprobe_mstat;
 
-  // quickly calculate total size of expected message before we do anything
-  DMTCP_PLUGIN_DISABLE_CKPT();
+  // calculate total size of expected message before we do anything
   status = MPI_Type_size(datatype, &size);
-  DMTCP_PLUGIN_ENABLE_CKPT();
-
   size = size * count;
+
   while (true)  // loop until we receive a packet
   {
     int flag = 0;
@@ -275,7 +335,7 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
       // drain from plugin to rank buffer
       status = mpi_plugin_return_buffered_packet(buf, count, datatype, source,
                                                 tag, comm, mpi_status, size);
-      break;
+      done = true;
     }
     else if (flag && wait_type == MPI_PLUGIN_PROXY_PACKET_WAITING)
     {
@@ -300,13 +360,13 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                                   mpi_status,
                                   sizeof(MPI_Status));
       }
-      break;
+      done = true;
     }
     // no packet waiting, allow a moment to sleep in case we need to checkpoint
     DMTCP_PLUGIN_ENABLE_CKPT();
-    // sleep(1);
+    if (done)
+      break;
   }
-  DMTCP_PLUGIN_ENABLE_CKPT();
   return status;
 }
 
@@ -350,6 +410,82 @@ pre_ckpt_update_ckpt_dir()
   dmtcp_set_ckpt_dir(o.str().c_str());
 }
 
+static bool drain_packet()
+{
+  void *buf;
+  int size = 0;
+  int count = 0;
+  int flag = 0;
+  int source = 0;
+  int tag = 0;
+  MPI_Datatype datatype;
+  MPI_Comm comm = MPI_COMM_WORLD; // FIXME - other comms?
+  MPI_Status status;
+  Message *message;
+
+  // Probe for waiting packet
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Iprobe);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_ANY_SOURCE);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_ANY_TAG);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int) MPI_COMM_WORLD);
+
+  // get probe resules
+  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
+  if (!flag)
+    return false;
+
+  // There's a packet waiting for us
+  // FIXME: actually figure out how to determine type and size
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_count);
+  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_INT);
+  // get answer
+  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+  count = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+
+  // Get Type_size info
+  // FIXME: get actual type size
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Type_size);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)MPI_INT);
+  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  size = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+
+  // allocate our receive buffer
+  size = count * size;
+  buf = malloc(size); // maximum of 65535 ints
+
+  // drain from proxy to plugin buffer
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Recv);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_INT); // FIXME: actual datatype
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, status.MPI_SOURCE);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, status.MPI_TAG);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // Ignore FIXME
+
+  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, size);
+
+  // copy all data into local message
+  message = (Message *)malloc(sizeof(Message));
+  message->buf        = buf;
+  message->count      = count;
+  message->datatype   = MPI_INT; // FIXME
+  message->comm       = comm;
+  message->status.count_lo    = status.count_lo;
+  message->status.count_hi_and_cancelled = status.count_hi_and_cancelled;
+  message->status.MPI_SOURCE  = status.MPI_SOURCE;
+  message->status.MPI_TAG     = status.MPI_TAG;
+  message->status.MPI_ERROR   = status.MPI_ERROR;
+  message->size       = size;
+
+  // queue it
+  gmessage_queue.push_back(message);
+  return true;
+}
+
 static void
 pre_ckpt_drain_data_from_proxy()
 {
@@ -381,6 +517,8 @@ pre_ckpt_drain_data_from_proxy()
   // the MPI_Recv calls can/should be forwarded to the proxy.
 
   // Proxy_Receive()
+
+  while (drain_packet());
 }
 
 static DmtcpBarrier mpiPluginBarriers[] = {

@@ -177,6 +177,9 @@ void MPIProxy_Recv(int connfd)
   else
   {
     // TODO: ????
+    // FIXME
+    printf("NOT IGNORE STATUS!!!\n");
+    fflush(stdout);
     mpi_status = NULL;
   }
 
@@ -230,6 +233,23 @@ void MPIProxy_Iprobe(int connfd)
   }
 }
 
+void MPIProxy_Get_count(int connfd)
+{
+  int retval = 0;
+  int count = 0;
+  MPI_Status status;
+  MPI_Datatype datatype;
+
+  // Get the MPI_Status and Datatype
+  read(connfd, &status, sizeof(MPI_Status));
+  datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
+
+  // Do the Get_count
+  retval = MPI_Get_count(&status, datatype, &count);
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Int(connfd, count);
+}
+
 void MPIProxy_Finalize(int connfd)
 {
   serial_printf("PROXY: MPI_Finalize - ");
@@ -276,6 +296,10 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Iprobe:
       serial_printf("PROXY(Iprobe) - ");
       MPIProxy_Iprobe(connfd);
+      break;
+    case MPIProxy_Cmd_Get_count:
+      serial_printf("PROXY(Get_count)");
+      MPIProxy_Get_count(connfd);
       break;
     case MPIProxy_Cmd_Finalize:
       serial_printf("PROXY(Finalize)");

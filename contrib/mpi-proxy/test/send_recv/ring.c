@@ -23,6 +23,7 @@ int main(int argc, char** argv) {
   // Receive from the lower process and send to the higher process. Take care
   // of the special case when you are the first process to prevent deadlock.
   if (world_rank != 0) {
+    sleep(5);
     MPI_Recv(&token, 1, MPI_INT, world_rank - 1, 0, MPI_COMM_WORLD,
              MPI_STATUS_IGNORE);
     printf("Process %d received token %d from process %d\n", world_rank, token,
