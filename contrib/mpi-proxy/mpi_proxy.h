@@ -11,6 +11,7 @@ enum MPI_Proxy_Commands
   MPIProxy_Cmd_Send,
   MPIProxy_Cmd_Recv,
   MPIProxy_Cmd_Type_size,
+  MPIProxy_Cmd_Iprobe,
   MPIProxy_Cmd_Shutdown_Proxy = 0xFFFFFFFF,
 };
 

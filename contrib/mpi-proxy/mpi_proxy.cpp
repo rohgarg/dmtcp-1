@@ -203,6 +203,33 @@ void MPIProxy_Recv(int connfd)
 }
 
 
+void MPIProxy_Iprobe(int connfd)
+{
+  int status = 0;
+  int source = 0;
+  int tag = 0;
+  MPI_Comm comm;
+  int flag = 0;
+  MPI_Status mpi_status;
+
+  // collect the arguments
+  source = MPIProxy_Receive_Arg_Int(connfd);
+  tag = MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  // do the Iprobe
+  status = MPI_Iprobe(source, tag, comm, &flag, &mpi_status);
+
+  // return the info
+  // Return receive's status
+  MPIProxy_Return_Answer(connfd, status);
+  if (status == MPI_SUCCESS)
+  {
+    MPIProxy_Send_Arg_Int(connfd, flag);
+    MPIProxy_Send_Arg_Buf(connfd, &mpi_status, sizeof(mpi_status));
+  }
+}
+
 void MPIProxy_Finalize(int connfd)
 {
   serial_printf("PROXY: MPI_Finalize - ");
@@ -245,6 +272,10 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Type_size:
       serial_printf("PROXY(Type_size) - ");
       MPIProxy_Type_size(connfd);
+      break;
+    case MPIProxy_Cmd_Iprobe:
+      serial_printf("PROXY(Iprobe) - ");
+      MPIProxy_Iprobe(connfd);
       break;
     case MPIProxy_Cmd_Finalize:
       serial_printf("PROXY(Finalize)");
