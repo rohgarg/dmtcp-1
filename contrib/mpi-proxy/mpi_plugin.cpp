@@ -82,19 +82,25 @@ void close_proxy(void)
 EXTERNC int
 MPI_Init(int *argc, char ***argv)
 {
+  int status = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
   JTRACE("PLUGIN: MPI_Init!\n");
-  return exec_proxy_cmd(MPIProxy_Cmd_Init);
+  status = exec_proxy_cmd(MPIProxy_Cmd_Init);
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return status;
 }
 
 EXTERNC int
 MPI_Comm_size(int group, int *world_size)
 {
   int status = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_CommSize);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, group);
   status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   if (!status) // success
     *world_size = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  DMTCP_PLUGIN_ENABLE_CKPT();
   return status;
 }
 
@@ -102,6 +108,7 @@ EXTERNC int
 MPI_Comm_rank(int group, int *world_rank)
 {
   int status = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_CommRank);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, group);
   status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
@@ -110,6 +117,7 @@ MPI_Comm_rank(int group, int *world_rank)
     JTRACE("*** GOT RANK\n");
     gworld_rank = *world_rank;
   }
+  DMTCP_PLUGIN_ENABLE_CKPT();
   return status;
 }
 
@@ -117,6 +125,7 @@ EXTERNC int
 MPI_Type_size(MPI_Datatype datatype, int *size)
 {
   int status = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Type_size);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, datatype);
 
@@ -124,6 +133,7 @@ MPI_Type_size(MPI_Datatype datatype, int *size)
   status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   if (status == MPI_SUCCESS) // if successful, ge the size
     *size = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  DMTCP_PLUGIN_ENABLE_CKPT();
 
   return status;
 }
