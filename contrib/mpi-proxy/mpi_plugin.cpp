@@ -135,6 +135,7 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
   int status = 0xFFFFFFFF;
   int size = 0;
 
+  DMTCP_PLUGIN_DISABLE_CKPT();
   status = MPI_Type_size(datatype, &size);
   if (status == MPI_SUCCESS)
   {
@@ -154,6 +155,7 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     // Get the status
     status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   }
+  DMTCP_PLUGIN_ENABLE_CKPT();
   return status;
 }
 
