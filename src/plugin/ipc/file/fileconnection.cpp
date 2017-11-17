@@ -29,6 +29,7 @@
 #include <iostream>
 #include <ios>
 #include <fstream>
+#include <fnmatch.h>
 #include <linux/limits.h>
 #include <arpa/inet.h>
 
@@ -71,11 +72,34 @@ static bool _isVimApp()
 
 static bool _isBlacklistedFile(string& path)
 {
+  char *skip_files = getenv("DMTCP_SKIP_CKPT_FILES");
   if ((Util::strStartsWith(path, "/dev/") &&
        !Util::strStartsWith(path, "/dev/shm/")) ||
       Util::strStartsWith(path, "/proc/") ||
       Util::strStartsWith(path, dmtcp_get_tmpdir())) {
     return true;
+  }
+
+  if (skip_files) {
+
+    char *token = NULL, *save = NULL, *tmplist = NULL;
+    size_t len = strlen(skip_files);
+
+    tmplist = (char*)JALLOC_HELPER_MALLOC(len);
+    JASSERT(tmplist);
+
+    save = tmplist;
+    memset(tmplist, 0, len);
+    strncpy(tmplist, skip_files, len);
+
+    while ((token = strsep(&tmplist, ":")) != NULL) {
+      if (fnmatch(token, path.c_str(), 0) == 0) {
+        JTRACE("blacklisting user-specified file")(path);
+        JALLOC_HELPER_FREE(save);
+        return true;
+      }
+    }
+    JALLOC_HELPER_FREE(save);
   }
   return false;
 }
@@ -583,6 +607,7 @@ void FileConnection::drain()
   }
 
   if (_isBlacklistedFile(_path)) {
+    _ckpted_file = false;
     return;
   }
   if (dmtcp_should_ckpt_open_files() && statbuf.st_uid == getuid()) {
