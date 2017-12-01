@@ -60,6 +60,7 @@ tidy:
 clean: tidy
 	rm -f ${LIBOBJS} ${LIBNAME}.so
 	rm -f mpi_proxy mpi_proxy.o
+	rm -rf ckpt_rank_*
 	cd test/hello; make clean; cd ../../
 	cd test/send_recv; make clean; cd ../../
 
