@@ -1,10 +1,13 @@
-EXECS=send_recv ping_pong ring typesize
+EXECS=send_recv send_recv_many ping_pong ring typesize
 MPICC?=mpicc
 
 all: ${EXECS}
 
 send_recv: send_recv.c
 	${MPICC} -o send_recv send_recv.c
+
+send_recv_many: send_recv_many.c
+	${MPICC} -o send_recv_many send_recv_many.c
 
 ping_pong: ping_pong.c
 	${MPICC} -o ping_pong ping_pong.c

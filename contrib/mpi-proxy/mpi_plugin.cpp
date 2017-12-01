@@ -495,7 +495,6 @@ static bool drain_packet()
   // queue it
   gmessage_queue.push_back(message);
   glocal_recv++;
-  gworld_recv++;
   return true;
 }
 
