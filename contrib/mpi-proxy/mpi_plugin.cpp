@@ -23,6 +23,12 @@
 // #define DEBUG
 
 int gworld_rank = 0;
+int gworld_size = 0;
+
+int gworld_sent = 0;
+int gworld_recv = 0;
+int glocal_sent = 0;
+int glocal_recv = 0;
 
 typedef struct Message
 {
@@ -197,6 +203,7 @@ MPI_Init(int *argc, char ***argv)
   DMTCP_PLUGIN_ENABLE_CKPT();
   // get our rank;
   MPI_Comm_rank(MPI_COMM_WORLD, &gworld_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &gworld_size);
   return status;
 }
 
@@ -210,6 +217,7 @@ MPI_Comm_size(int group, int *world_size)
   status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   if (!status) // success
     *world_size = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+
   DMTCP_PLUGIN_ENABLE_CKPT();
   return status;
 }
@@ -276,7 +284,11 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     // Get the status
     status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   }
+  glocal_sent++;
   DMTCP_PLUGIN_ENABLE_CKPT();
+
+  // FIXME: wait_for_complete();
+
   return status;
 }
 
@@ -361,6 +373,7 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                                   sizeof(MPI_Status));
       }
       done = true;
+      gworld_recv++;
     }
     // no packet waiting, allow a moment to sleep in case we need to checkpoint
     DMTCP_PLUGIN_ENABLE_CKPT();
@@ -483,47 +496,124 @@ static bool drain_packet()
 
   // queue it
   gmessage_queue.push_back(message);
+  glocal_recv++;
+  gworld_recv++;
   return true;
+}
+
+struct keyVal {
+  int typerank;
+  uint32_t value;
+} mystruct, mystruct_other;
+
+int HIGHBIT = 1 << ((sizeof(mystruct.typerank)*8)-1);
+uint32_t sizeofval = sizeof(mystruct_other.value);
+
+static void
+pre_ckpt_register_data()
+{
+  // publish my keys and values
+  mystruct.typerank = gworld_rank;
+  mystruct.value = glocal_sent;
+  dmtcp_send_key_val_pair_to_coordinator("mpi-proxy",
+                                          &(mystruct.typerank),
+                                          sizeof(mystruct.typerank),
+                                          &(mystruct.value),
+                                          sizeof(mystruct.value));
+  mystruct.typerank |= HIGHBIT;
+  mystruct.value = glocal_recv;
+  dmtcp_send_key_val_pair_to_coordinator("mpi-proxy",
+                                          &(mystruct.typerank),
+                                          sizeof(mystruct.typerank),
+                                          &(mystruct.value),
+                                          sizeof(mystruct.value));
+  return;
+}
+
+static void
+get_packets_sent()
+{
+  int i = 0;
+  gworld_sent = glocal_sent;
+  for (i = 0; i < gworld_size; i++)
+  {
+    if (i == gworld_rank)
+      continue;
+    // get number of sent packets by this proxy
+    mystruct_other.typerank = i;
+    mystruct_other.value = 0;
+    dmtcp_send_query_to_coordinator("mpi-proxy",
+                                      &(mystruct_other.typerank),
+                                      sizeof(mystruct_other.typerank),
+                                      &(mystruct_other.value),
+                                      &sizeofval);
+    gworld_sent += mystruct_other.value;
+  }
+}
+
+static void
+get_packets_recv()
+{
+  int i = 0;
+  gworld_recv = 0;
+  // get everyone elses keys and values
+  for (i = 0; i < gworld_size; i++)
+  {
+    if (i == gworld_rank)
+    {
+      gworld_recv += glocal_recv;
+      continue;
+    }
+
+    // get number of received packets by this proxy
+    mystruct_other.typerank = (i | HIGHBIT);
+    mystruct_other.value = 0;
+    dmtcp_send_query_to_coordinator("mpi-proxy",
+                                      &(mystruct_other.typerank),
+                                      sizeof(mystruct_other.typerank),
+                                      &(mystruct_other.value),
+                                      &sizeofval);
+    gworld_recv += mystruct_other.value;
+  }
+}
+
+static void
+publish_packets_recv()
+{
+  mystruct.typerank = gworld_rank | HIGHBIT;
+  mystruct.value = glocal_recv;
+  dmtcp_send_key_val_pair_to_coordinator("mpi-proxy",
+                                          &(mystruct.typerank),
+                                          sizeof(mystruct.typerank),
+                                          &(mystruct.value),
+                                          sizeof(mystruct.value));
 }
 
 static void
 pre_ckpt_drain_data_from_proxy()
 {
-  // One way to do this is to have two global barriers:
-  //  1) Each rank MPI_Sends a known "cookie"
-  //  2) Each rank receives all the packets from its proxy
-  //     until it sees the known cookie
-  //
-  // The other way to do this is to have the proxy keep track
-  // of undelivered packets (i.e., packets that have not been consumed
-  // by the rank). This way we can have just a single global pre-ckpt
-  // barrier, where each rank will receive all undelivered packets into
-  // a local "vector<buffer>"
-  //
-  // The problem with the first approach is that we have to worry about
-  // communication channels between ranks. MPI guarantees no-overtaking
-  //  (i.e., FIFO) between ranks. However, I suspect that the no-overtaking
-  // rule is not guaranteed across multiple communication channels that
-  // might exists between two ranks.
-  //
-  // The problem with the second approach is that we introduce some
-  // state in the proxy. Note that with the first approach, the proxy can
-  // continue to be stateless and dumb.
-  //
-  // In both the approaches, the resume/restart part remains the same:
-  // On resume/restart, MPI_Recv() calls from the user threads
-  // must be serviced from the local buffers, until the buffers
-  // have been emptied. When the local buffers have been emptied,
-  // the MPI_Recv calls can/should be forwarded to the proxy.
+  get_packets_sent();
+  get_packets_recv();
+  while (gworld_sent != gworld_recv)
+  {
+    drain_packet();
+    // we have to call this every time to get up to date numbers
+    // of all the proxies, since we're not the only one waiting
+    publish_packets_recv();
+    get_packets_recv();
+  }
 
-  // Proxy_Receive()
-
-  while (drain_packet());
+  // on restart, we want to start totally fresh, since everything
+  // is sent and received, these numbers are now totally irrelevant
+  gworld_sent = 0;
+  gworld_recv = 0;
+  glocal_sent = 0;
+  glocal_recv = 0;
 }
 
 static DmtcpBarrier mpiPluginBarriers[] = {
-  //{ DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt, "checkpoint" },
-  //{ DMTCP_GLOBAL_BARRIER_RESTART, restart_proxy, "restart" },
+  { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_register_data,
+    "Drain-Data-From-Proxy" },
   { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_drain_data_from_proxy,
     "Drain-Data-From-Proxy" },
   { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_update_ckpt_dir,
