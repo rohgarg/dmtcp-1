@@ -450,18 +450,16 @@ static bool drain_packet()
     return false;
 
   // There's a packet waiting for us
-  // FIXME: actually figure out how to determine type and size
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_count);
   Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
-  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_INT);
-  // get answer
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_BYTE);
   Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
   count = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
 
   // Get Type_size info
   // FIXME: get actual type size
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Type_size);
-  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)MPI_INT);
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)MPI_BYTE);
   Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   size = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
 
@@ -472,7 +470,7 @@ static bool drain_packet()
   // drain from proxy to plugin buffer
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Recv);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
-  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_INT); // FIXME: actual datatype
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_BYTE); // FIXME: actual datatype
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, status.MPI_SOURCE);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, status.MPI_TAG);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
@@ -485,7 +483,7 @@ static bool drain_packet()
   message = (Message *)malloc(sizeof(Message));
   message->buf        = buf;
   message->count      = count;
-  message->datatype   = MPI_INT; // FIXME
+  message->datatype   = MPI_BYTE;
   message->comm       = comm;
   message->status.count_lo    = status.count_lo;
   message->status.count_hi_and_cancelled = status.count_hi_and_cancelled;

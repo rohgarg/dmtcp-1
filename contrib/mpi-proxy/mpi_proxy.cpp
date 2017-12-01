@@ -192,7 +192,8 @@ void MPIProxy_Recv(int connfd)
 
   // Do the receive
   MPI_Type_size(datatype, &size);
-  buf = malloc(count * size);
+  size = count * size;
+  buf = malloc(size);
 
   // TODO: Check that mpi_status is correctly used here
   serial_printf("PROXY: RECIEVING - ");
