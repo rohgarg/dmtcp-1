@@ -257,6 +257,18 @@ MPI_Type_size(MPI_Datatype datatype, int *size)
 }
 
 EXTERNC int
+MPI_Get_count(const MPI_Status *status, MPI_Datatype datatype, int *count)
+{
+  DMTCP_PLUGIN_DISABLE_CKPT();
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_count);
+  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_BYTE);
+  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+  *count = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  DMTCP_PLUGIN_ENABLE_CKPT();
+}
+
+EXTERNC int
 MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
           MPI_Comm comm)
 {
