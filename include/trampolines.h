@@ -127,6 +127,7 @@ dmtcp_setup_trampoline(const char *func_name,
 {
   /* Find libc func
      We assume that no one is wrapping func yet. */
+#if 0
   void *handle = dlopen(LIBC_FILENAME, RTLD_NOW);
 
   if (handle == NULL) {
@@ -135,12 +136,17 @@ dmtcp_setup_trampoline(const char *func_name,
     abort();
   }
   void *addr = dlsym(handle, func_name);
+#else
+  void *addr = dlsym(RTLD_DEFAULT, func_name);
+#endif
   if (addr == NULL) {
     fprintf(stderr, "*** %s:%d DMTCP Internal Error: dlsym() failed.\n",
             __FILE__, __LINE__);
     abort();
   }
+#if 0
   dlclose(handle);
+#endif
   dmtcp_setup_trampoline_by_addr(addr, trampoline_fn, info);
 }
 #endif // ifndef TRAMPOLINES_H
