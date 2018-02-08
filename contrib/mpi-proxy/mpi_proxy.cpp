@@ -50,6 +50,14 @@ int MPIProxy_Send_Arg_Int(int connfd, int arg)
   return status;
 }
 
+int MPIProxy_Receive_Arg_Buf(int connfd, void *buf, int size)
+{
+  int received = 0;
+  while (received < size)
+    received += read(connfd, ((char *)buf)+received, size-received);
+  return size == received;
+}
+
 int MPIProxy_Send_Arg_Buf(int connfd, void *buf, int size)
 {
   int status = write(connfd, buf, size);
@@ -118,10 +126,14 @@ void MPIProxy_Type_size(int connfd)
 
 std::vector<MPI_Request *>grequest_queue;
 
+// FIXME:  This is a massive hack to get performance measurements without
+// actually fixing the memory leak correctly
+// totally do not leave this in there, for the love of science
+void * send_buf = NULL;
 void MPIProxy_Send(int connfd)
 {
   int retval = 0;
-  void * buf = NULL;
+  // void * buf = NULL;
   int size = 0;
   int count, dest, tag;
   int msgid;  // used to verify it was sent
@@ -134,8 +146,10 @@ void MPIProxy_Send(int connfd)
   size = MPIProxy_Receive_Arg_Int(connfd);
 
   // Buffer read
-  buf = malloc(size);
-  read(connfd, buf, size);
+  if (send_buf)
+    free(send_buf); // FIXME: Part of the massive hack
+  send_buf = malloc(size);
+  MPIProxy_Receive_Arg_Buf(connfd, send_buf, size);
 
   // rest of the arguments
   count = MPIProxy_Receive_Arg_Int(connfd);
@@ -146,7 +160,7 @@ void MPIProxy_Send(int connfd)
 
   // Do the send
   // FIXME: do i need to keep track of these for any reason?
-  retval = MPI_Isend(buf, count, datatype, dest, tag, comm, &request);
+  retval = MPI_Isend(send_buf, count, datatype, dest, tag, comm, &request);
 
   if (retval != MPI_SUCCESS)
   {
@@ -154,7 +168,8 @@ void MPIProxy_Send(int connfd)
     fflush(stdout);
   }
 
-  free(buf); // TODO: Should I free here?
+  // free(buf); // TODO: EPIC FAIL ON NON-BLOCKING I/O
+  // FIXME:  SWEET SCIENCE THE MEMORY IS LEAKING!!!!
   MPIProxy_Return_Answer(connfd, retval);
 }
 
@@ -194,6 +209,7 @@ void MPIProxy_Recv(int connfd)
   MPI_Type_size(datatype, &size);
   size = count * size;
   buf = malloc(size);
+  memset(buf, 0, size);
 
   // TODO: Check that mpi_status is correctly used here
   serial_printf("PROXY: RECIEVING - ");
@@ -249,7 +265,7 @@ void MPIProxy_Get_count(int connfd)
   MPI_Datatype datatype;
 
   // Get the MPI_Status and Datatype
-  read(connfd, &status, sizeof(MPI_Status));
+  MPIProxy_Receive_Arg_Buf(connfd, &status, sizeof(MPI_Status));
   datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
 
   // Do the Get_count

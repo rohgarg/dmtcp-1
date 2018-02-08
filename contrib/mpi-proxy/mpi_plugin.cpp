@@ -59,9 +59,11 @@ int Receive_Int_From_Proxy(int connfd)
 
 int Receive_Buf_From_Proxy(int connfd, void* buf, int size)
 {
-  int status = 0;
-  status = read(connfd, buf, size);
-  return status;
+  int received = 0;
+  while (received != size)
+    received += read(connfd, ((char *)buf)+received, size-received);
+  // TODO: error check
+  return size == received;
 }
 
 int Send_Int_To_Proxy(int connfd, int arg)
