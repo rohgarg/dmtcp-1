@@ -37,6 +37,10 @@ namespace dmtcp
                   DmtcpMessage &hello_remote,
 		  int isNSWorker = 0);
 
+      CoordClient(const jalib::JSocket& sock,
+                  const struct sockaddr_storage *addr,
+                  socklen_t len);
+
       jalib::JSocket &sock() { return _sock; }
       const UniquePid& identity() const { return _identity;}
       void identity(UniquePid upid) { _identity = upid;}
@@ -53,6 +57,7 @@ namespace dmtcp
       pid_t virtualPid(void) const { return _virtualPid; }
       void virtualPid(pid_t pid) { _virtualPid = pid; }
       int isNSWorker() {return _isNSWorker;}
+      bool isChildCoord() {return _isChildCoord;}
 
       void readProcessInfo(DmtcpMessage& msg);
 
@@ -67,6 +72,7 @@ namespace dmtcp
       pid_t _realPid;
       pid_t _virtualPid;
       int _isNSWorker;
+      bool _isChildCoord;
   };
 
   class DmtcpCoordinator
@@ -79,10 +85,10 @@ namespace dmtcp
         int numPeers;
       } ComputationStatus;
 
-      void onData(CoordClient *client);
-      void onConnect();
-      void onDisconnect(CoordClient *client);
-      void eventLoop(bool daemon);
+      virtual void onData(CoordClient *client);
+      virtual void onConnect();
+      virtual void onDisconnect(CoordClient *client, pid_t vpid = -1);
+      virtual void eventLoop(bool daemon);
 
       void addDataSocket(CoordClient *client);
       void updateCheckpointInterval(uint32_t timeout);
@@ -97,16 +103,15 @@ namespace dmtcp
 
       void processDmtUserCmd(DmtcpMessage& hello_remote,
                              jalib::JSocket& remote);
-      bool validateNewWorkerProcess(DmtcpMessage& hello_remote,
-                                    jalib::JSocket& remote,
-                                    CoordClient *client,
-                                    const struct sockaddr_storage* addr,
-                                    socklen_t len);
-      bool validateRestartingWorkerProcess(DmtcpMessage& hello_remote,
-                                           jalib::JSocket& remote,
-                                           const struct sockaddr_storage* addr,
-                                           socklen_t len);
-
+      virtual bool validateNewWorkerProcess(DmtcpMessage& hello_remote,
+                                            jalib::JSocket& remote,
+                                            CoordClient *client,
+                                            const struct sockaddr_storage* addr,
+                                            socklen_t len);
+      virtual bool validateRestartingWorkerProcess(DmtcpMessage& hello_remote,
+                                                   jalib::JSocket& remote,
+                                                   const struct sockaddr_storage* addr,
+                                                   socklen_t len);
       ComputationStatus getStatus() const;
       WorkerState::eWorkerState minimumState() const {
         return getStatus().minimumState;
@@ -116,6 +121,11 @@ namespace dmtcp
 
     protected:
       void writeRestartScript();
+      void createConnectionToParentCoordinator();
+      pid_t getVirtualPidFromParent(DmtcpMessage *hello_remote, CoordClient *client);
+      void informParentOfVirtualPid(DmtcpMessage *hello_remote, CoordClient *client);
+      void sendClientUpdateToParent(CoordClient *client);
+      void processParentCoordinatorMsg();
     private:
 
       // Store whether rsh/ssh was used
@@ -127,6 +137,27 @@ namespace dmtcp
       map< pid_t, CoordClient* > _virtualPidToClientMap;
   };
 
+  class DmtcpMetaCoordinator: public DmtcpCoordinator
+  {
+    public:
+      virtual void onData(CoordClient *client);
+      virtual void onConnect();
+      virtual void onDisconnect(CoordClient *client, pid_t vpid = -1);
+      virtual bool validateNewWorkerProcess(DmtcpMessage& hello_remote,
+                                            jalib::JSocket& remote,
+                                            CoordClient *client,
+                                            const struct sockaddr_storage* addr,
+                                            socklen_t len);
+      virtual bool validateRestartingWorkerProcess(DmtcpMessage& hello_remote,
+                                                   jalib::JSocket& remote,
+                                                   const struct sockaddr_storage* addr,
+                                                   socklen_t len);
+      void addNewChildCoordWorker(DmtcpMessage &msg, void *extraData, CoordClient *childCoord);
+    private:
+      vector< CoordClient *> _childCoords;
+      map< pid_t, CoordClient* > _virtualPidToClientMap;
+      map< CoordClient*, vector<CoordClient*> > _childCoordToCoordClients;
+  };
 }
 
 #endif

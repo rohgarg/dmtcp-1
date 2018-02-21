@@ -149,7 +149,7 @@ static bool exitAfterCkptOnce = false;
 static int blockUntilDoneRemote = -1;
 static uint32_t mask = 0;
 
-static DmtcpCoordinator prog;
+static DmtcpCoordinator *prog = NULL;
 
 /* The coordinator can receive a second checkpoint request while processing the
  * first one.  If the second request comes at a point where the coordinator has
@@ -228,6 +228,18 @@ CoordClient::CoordClient(const jalib::JSocket& sock,
   _identity = hello_remote.from;
   _state = hello_remote.state;
   _virtualPid = 0;
+  struct sockaddr_in *in = (struct sockaddr_in*) addr;
+  _ip = inet_ntoa(in->sin_addr);
+}
+
+CoordClient::CoordClient(const jalib::JSocket& sock,
+                         const struct sockaddr_storage *addr,
+                         socklen_t len)
+  : _sock(sock), _isChildCoord(true)
+{
+  _isNSWorker = 0;
+  _realPid = -1;
+  _clientNumber = theNextClientNumber++;
   struct sockaddr_in *in = (struct sockaddr_in*) addr;
   _ip = inet_ntoa(in->sin_addr);
 }
@@ -552,6 +564,298 @@ void DmtcpCoordinator::updateMinimumState(WorkerState::eWorkerState oldState)
   }
 }
 
+static int parentPort = -1;
+static string parentHost;
+static jalib::JSocket* parentSock = NULL;
+
+/*
+ * The coordinator binary operates in three modes: child, meta, and
+ * regular (non-child and non-meta). This is why we need these two
+ * different booleans.
+ *
+ * isChildCoord is set only if the `--parent-port` is specified.
+ * isMetaCoord is set only if the `--meta-coord` is specified.
+ */
+static bool isChildCoord = false;
+static bool isMetaCoord = false;
+
+void DmtcpCoordinator::createConnectionToParentCoordinator()
+{
+  DmtcpUniqueProcessId compId;
+  struct in_addr localIPAddr;
+
+  parentSock = new jalib::JClientSocket(parentHost.c_str(), parentPort);
+  JASSERT(parentSock->isValid());
+
+  struct epoll_event ev;
+
+#ifdef EPOLLRDHUP
+  ev.events = EPOLLIN | EPOLLRDHUP;
+#else
+  ev.events = EPOLLIN;
+#endif
+  ev.data.ptr = parentSock;
+  JASSERT(epoll_ctl(epollFd, EPOLL_CTL_ADD, parentSock->sockfd(), &ev) != -1)
+    (JASSERT_ERRNO);
+}
+
+pid_t DmtcpCoordinator::getVirtualPidFromParent(DmtcpMessage *hello_remote, CoordClient *client)
+{
+  if (!parentSock) return -1;
+
+  DmtcpMessage msg;
+  (*parentSock) << *hello_remote;
+  if (hello_remote->extraBytes > 0) {
+    parentSock->writeAll(client->hostname().c_str(), client->hostname().length() + 1);
+    parentSock->writeAll(client->progname().c_str(), client->progname().length() + 1);
+  }
+
+  msg.poison();
+  (*parentSock) >> msg;
+  msg.assertValid();
+  JASSERT(msg.type == DMT_ACCEPT)(msg.type);
+
+  return msg.virtualPid;
+}
+
+void DmtcpCoordinator::informParentOfVirtualPid(DmtcpMessage *hello_remote, CoordClient *client)
+{
+  if (!parentSock) return;
+
+  (*parentSock) << *hello_remote;
+  if (hello_remote->extraBytes > 0) {
+    parentSock->writeAll(client->hostname().c_str(), client->hostname().length() + 1);
+    parentSock->writeAll(client->progname().c_str(), client->progname().length() + 1);
+  }
+
+  DmtcpMessage msg;
+  (*parentSock) >> msg;
+  msg.assertValid();
+  JASSERT(msg.type == DMT_ACCEPT)(msg.type);
+}
+
+void DmtcpCoordinator::sendClientUpdateToParent(CoordClient *client)
+{
+  if (!parentSock) return;
+  DmtcpMessage msg;
+  msg.type = DMT_NULL;
+  msg.virtualPid = client->virtualPid();
+  (*parentSock) << msg;
+}
+
+void DmtcpCoordinator::processParentCoordinatorMsg()
+{
+  if (!parentSock) return;
+  DmtcpMessage msg;
+  (*parentSock) >> msg;
+  if (msg.type == DMT_KILL_PEER) {
+    prog->handleUserCommand('k');
+  }
+}
+
+void
+DmtcpMetaCoordinator::onConnect()
+{
+  struct sockaddr_storage remoteAddr;
+  socklen_t remoteLen = sizeof(remoteAddr);
+  jalib::JSocket remote = listenSock->accept(&remoteAddr, &remoteLen);
+  JTRACE("accepting new connection") (remote.sockfd()) (JASSERT_ERRNO);
+
+  if (!remote.isValid()) {
+    remote.close();
+    return;
+  }
+
+  CoordClient *client = new CoordClient(remote, &remoteAddr, remoteLen);
+  JNOTE ( "child coordinator connected" );
+
+  _childCoords.push_back(client);
+  addDataSocket(client);
+}
+
+void
+DmtcpMetaCoordinator::addNewChildCoordWorker(DmtcpMessage &hello_remote,
+                                             void *extraData, CoordClient *childCoord)
+{
+  jalib::JSocket remote = childCoord->sock();
+  struct sockaddr_storage remoteAddr;
+  socklen_t remoteLen = sizeof(remoteAddr);
+
+  CoordClient *client = new CoordClient(remote, &remoteAddr, remoteLen,
+                                        hello_remote);
+  if (hello_remote.extraBytes > 0) {
+    client->hostname((char*)extraData);
+    client->progname((char*)extraData + client->hostname().length() + 1);
+  }
+  JNOTE("new grandchild")(client->hostname())(client->progname());
+  if (hello_remote.type == DMT_RESTART_WORKER) {
+    client->virtualPid(hello_remote.from.pid());
+    if (!validateRestartingWorkerProcess(hello_remote, remote,
+                                         &remoteAddr, remoteLen)) {
+      return;
+    }
+    _virtualPidToClientMap[client->virtualPid()] = client;
+    // We don't really care about the isRestarting state in the meta coord.
+    // isRestarting = true;
+  } else if (hello_remote.type == DMT_NEW_WORKER) {
+    JASSERT(hello_remote.state == WorkerState::RUNNING ||
+            hello_remote.state == WorkerState::UNKNOWN);
+    JASSERT(hello_remote.virtualPid == -1);
+    client->virtualPid(getNewVirtualPid());
+    if (!validateNewWorkerProcess(hello_remote, remote, client,
+                                  &remoteAddr, remoteLen)) {
+      return;
+    }
+    _virtualPidToClientMap[client->virtualPid()] = client;
+  } else {
+    JASSERT(false) (hello_remote.type)
+      .Text("Connect request from Unknown Remote Process Type");
+  }
+
+  clients.push_back(client);
+  _childCoordToCoordClients[childCoord].push_back(client);
+}
+
+void
+DmtcpMetaCoordinator::onData(CoordClient *client)
+{
+  DmtcpMessage msg;
+  JASSERT(client != NULL);
+
+  client->sock() >> msg;
+  msg.assertValid();
+  char *extraData = 0;
+  if (msg.extraBytes > 0) {
+    extraData = new char[msg.extraBytes];
+    client->sock().readAll(extraData, msg.extraBytes);
+  }
+
+  switch ( msg.type ) {
+    case DMT_RESTART_WORKER:
+    case DMT_NEW_WORKER:
+      addNewChildCoordWorker(msg, extraData, client);
+      break;
+    case DMT_NULL:
+      onDisconnect(client, msg.virtualPid);
+      break;
+    default:
+      JASSERT ( false ) ( msg.from ) ( msg.type )
+          .Text ( "unexpected message from worker" );
+      break;
+  }
+}
+
+/*
+ * onDisconnect() is called from two places: eventLoop() and onData().
+ *
+ * In the first case, it is called when a data socket disconnects (perhaps
+ * because the child coordinator died). The vpid is set to -1, in this
+ * case, since we don't assign any virtual pid's to child coordinators.
+ *
+ * In the second case, it is called when a client of a child coordinator
+ * dies, which then sends a DMT_NULL message to the meta coordinator. The
+ * vpid is set to the virtual pid of the client (grandchild) that died.
+ */
+void
+DmtcpMetaCoordinator::onDisconnect(CoordClient *client, pid_t vpid)
+{
+  if (client->isNSWorker()) {
+    JWARNING(false).Text("Meta coordinator cannot accept NS workers");
+    return;
+  }
+  for (size_t i = 0; i < clients.size(); i++) {
+    // The child coordinator sent us a DMT_NULL message to indicate that a client
+    // of their's disconnected; it should have sent us a valid vpid.
+    if (vpid > 0 && clients[i]->virtualPid() == vpid) {
+      clients.erase(clients.begin() + i);
+      JNOTE ( "client disconnected" ) ( clients[i]->identity() ) (clients[i]->progname());
+      _virtualPidToClientMap.erase(vpid);
+      break;
+    }
+  }
+
+  if (vpid == -1) {
+
+    JASSERT(client->isChildCoord());
+
+    // First, we close child coord sock, if the child coord died
+    client->sock().close();
+
+    // Second, since the child coordinator exited (possibly abruptly), we remove
+    // all the grandchildren entries from the global list of "clients", and we
+    // clear all the vpid mappings associated with the children of the child
+    // coordinator that died.
+    JNOTE ( "child coordinator disconnected" );
+    vector<CoordClient*> childClients = _childCoordToCoordClients[client];
+    for (size_t i = 0; i < childClients.size(); i++) {
+      for (size_t j = 0; j < clients.size(); j++) {
+        if (clients[j] == childClients[i]) {
+          JNOTE ( "client disconnected" ) ( clients[j]->identity() ) (clients[j]->progname());
+          clients.erase(clients.begin() + j);
+          _virtualPidToClientMap.erase(clients[j]->virtualPid());
+          break;
+        }
+      }
+    }
+    _childCoordToCoordClients.erase(client);
+
+    // Finally, we delete the child coordinator from the _childCoords list.
+    for (size_t i = 0; i < _childCoords.size(); i++) {
+      if (_childCoords[i] == client) {
+        _childCoords.erase(_childCoords.begin() + i);
+        break;
+      }
+    }
+  }
+
+  ComputationStatus s = getStatus();
+  if (s.numPeers < 1) {
+    if (exitOnLast) {
+      JNOTE ("last client exited, shutting down..");
+      handleUserCommand('q');
+    }
+
+    // If a kill in is progress, the coordinator refuses any new connections,
+    // thus we need to reset it to false once all the processes in the
+    // computations have disconnected.
+    killInProgress = false;
+    if (theCheckpointInterval != theDefaultCheckpointInterval) {
+      updateCheckpointInterval(theDefaultCheckpointInterval);
+      JNOTE ( "CheckpointInterval reset on end of current computation" )
+        ( theCheckpointInterval );
+    }
+  } else {
+    updateMinimumState(client->state());
+  }
+}
+
+bool
+DmtcpMetaCoordinator::validateNewWorkerProcess(DmtcpMessage& hello_remote,
+                                            jalib::JSocket& remote,
+                                            CoordClient *client,
+                                            const struct sockaddr_storage* addr,
+                                            socklen_t len)
+{
+  DmtcpMessage hello_local(DMT_ACCEPT);
+  JASSERT(hello_remote.state == WorkerState::RUNNING ||
+          hello_remote.state == WorkerState::UNKNOWN) (hello_remote.state);
+  hello_local.virtualPid = client->virtualPid();
+  remote << hello_local;
+  return true;
+}
+
+bool
+DmtcpMetaCoordinator::validateRestartingWorkerProcess(DmtcpMessage& hello_remote,
+                                                   jalib::JSocket& remote,
+                                                   const struct sockaddr_storage* addr,
+                                                   socklen_t len)
+{
+  DmtcpMessage hello_local(DMT_ACCEPT);
+  JASSERT(hello_remote.state == WorkerState::RESTARTING);
+  remote << hello_local;
+  return true;
+}
+
 void DmtcpCoordinator::onData(CoordClient *client)
 {
   DmtcpMessage msg;
@@ -673,11 +977,12 @@ void DmtcpCoordinator::onData(CoordClient *client)
 
     case DMT_NULL:
       JWARNING(false) (msg.type) .Text("unexpected message from worker. Closing connection");
-      onDisconnect(client);
+      onDisconnect(client, msg.virtualPid);
       break;
     default:
       JASSERT ( false ) ( msg.from ) ( msg.type )
         .Text ( "unexpected message from worker" );
+      break;
   }
 
   delete[] extraData;
@@ -700,7 +1005,7 @@ static void preExitCleanup()
   unlink(thePortFile.c_str());
 }
 
-void DmtcpCoordinator::onDisconnect(CoordClient *client)
+void DmtcpCoordinator::onDisconnect(CoordClient *client, pid_t vpid)
 {
   if (client->isNSWorker()) {
     client->sock().close();
@@ -713,7 +1018,9 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
       break;
     }
   }
+
   client->sock().close();
+
   JNOTE ( "client disconnected" ) ( client->identity() ) (client->progname());
   _virtualPidToClientMap.erase(client->virtualPid());
 
@@ -737,6 +1044,7 @@ void DmtcpCoordinator::onDisconnect(CoordClient *client)
   } else {
     updateMinimumState(client->state());
   }
+  sendClientUpdateToParent(client);
 }
 
 void DmtcpCoordinator::initializeComputation()
@@ -890,6 +1198,12 @@ void DmtcpCoordinator::onConnect()
     client->readProcessInfo(hello_remote);
   }
 
+  if (parentPort != -1) {
+    if (parentSock == NULL) {
+      createConnectionToParentCoordinator();
+    }
+  }
+
   if (hello_remote.type == DMT_RESTART_WORKER) {
     if (!validateRestartingWorkerProcess(hello_remote, remote,
                                          &remoteAddr, remoteLen)) {
@@ -897,12 +1211,19 @@ void DmtcpCoordinator::onConnect()
     }
     client->virtualPid(hello_remote.from.pid());
     _virtualPidToClientMap[client->virtualPid()] = client;
+    if (isChildCoord && parentSock) {
+      informParentOfVirtualPid(&hello_remote, client);
+    }
     isRestarting = true;
   } else if (hello_remote.type == DMT_NEW_WORKER) {
     JASSERT(hello_remote.state == WorkerState::RUNNING ||
             hello_remote.state == WorkerState::UNKNOWN);
     JASSERT(hello_remote.virtualPid == -1);
-    client->virtualPid(getNewVirtualPid());
+    if (isChildCoord && parentSock) {
+      client->virtualPid(getVirtualPidFromParent(&hello_remote, client));
+    } else {
+      client->virtualPid(getNewVirtualPid());
+    }
     if (!validateNewWorkerProcess(hello_remote, remote, client,
                                   &remoteAddr, remoteLen)) {
       return;
@@ -1231,7 +1552,7 @@ DmtcpCoordinator::ComputationStatus DmtcpCoordinator::getStatus() const
 static void signalHandler(int signum)
 {
   if (signum == SIGINT) {
-    prog.handleUserCommand('q');
+    prog->handleUserCommand('q');
   } else if (signum == SIGALRM) {
     timerExpired = true;
   } else {
@@ -1426,6 +1747,9 @@ void DmtcpCoordinator::eventLoop(bool daemon)
           JASSERT(epoll_ctl(epollFd, EPOLL_CTL_DEL, STDIN_FILENO, &ev) != -1)
             (JASSERT_ERRNO);
           close(STDIN_FD);
+        } else if (ptr == (void*) parentSock) {
+          JNOTE("The parent coordinator died; will exit now");
+          handleUserCommand('q');
         } else {
           onDisconnect((CoordClient*)ptr);
         }
@@ -1444,7 +1768,10 @@ void DmtcpCoordinator::eventLoop(bool daemon)
               (JASSERT_ERRNO);
             close(STDIN_FD);
           }
-        } else {
+       } else if (ptr == (void*) parentSock) {
+          JASSERT(parentSock != NULL);
+          processParentCoordinatorMsg();
+       } else {
           onData((CoordClient*)ptr);
         }
       }
@@ -1536,6 +1863,16 @@ int main ( int argc, char** argv )
                isdigit(argv[0][2])) { // else if -p0, for example
       thePort = jalib::StringToInt( argv[0]+2 );
       shift;
+    } else if (s == "--meta-coord") {
+      isMetaCoord = true;
+      shift;
+    } else if (argc>1 && s == "--parent-host") {
+      parentHost = argv[1];
+      shift; shift;
+    } else if (argc>1 && s == "--parent-port") {
+      isChildCoord = true;
+      parentPort = jalib::StringToInt( argv[1] );
+      shift; shift;
     }else if(argc>1 && s == "--port-file"){
       thePortFile = argv[1];
       shift; shift;
@@ -1699,6 +2036,11 @@ int main ( int argc, char** argv )
     sigprocmask(SIG_BLOCK, &set, NULL);
   }
 
-  prog.eventLoop(daemon);
+  if (isMetaCoord) {
+    prog = new DmtcpMetaCoordinator();
+  } else {
+    prog = new DmtcpCoordinator();
+  }
+  prog->eventLoop(daemon);
   return 0;
 }
