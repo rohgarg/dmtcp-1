@@ -139,8 +139,6 @@ void MPIProxy_Send(int connfd)
   int msgid;  // used to verify it was sent
   MPI_Datatype datatype;
   MPI_Comm comm;
-  MPI_Request request;;
-  memset(&request, 0x0, sizeof(MPI_Request));
 
   // Collect the arguments
   size = MPIProxy_Receive_Arg_Int(connfd);
@@ -160,7 +158,7 @@ void MPIProxy_Send(int connfd)
 
   // Do the send
   // FIXME: do i need to keep track of these for any reason?
-  retval = MPI_Isend(send_buf, count, datatype, dest, tag, comm, &request);
+  retval = MPI_Send(buf, count, datatype, dest, tag, comm);
 
   if (retval != MPI_SUCCESS)
   {
@@ -168,8 +166,7 @@ void MPIProxy_Send(int connfd)
     fflush(stdout);
   }
 
-  // free(buf); // TODO: EPIC FAIL ON NON-BLOCKING I/O
-  // FIXME:  SWEET SCIENCE THE MEMORY IS LEAKING!!!!
+  free(buf); // TODO: Should I free here?
   MPIProxy_Return_Answer(connfd, retval);
 }
 
