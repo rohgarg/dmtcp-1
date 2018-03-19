@@ -1,0 +1,30 @@
+this was to satiate my curiosity as to what would happen
+should a developer mix the usage of RECV and IRECV. I
+was concerned that a blocking receive may take presedence
+over a non-blocking receive if receiving from the same
+source, and when MPI_ANY_SOURCE is mixed in.
+
+I mixed a use of a randomly placed sleep, and swapping
+the address used by the receiver from its partner to the
+MPI_ANY_SOURCE tag, in order to shake out any inconsistencies.
+
+However it's clear there is simply a queue that the RECV
+requests are attached to, and RECV requests are filled in
+a FIFO manner.  This should simplify our checkpoint time
+draining mechanism significantly, since we can be fairly
+certain an in-flight packet with a pending IRECV will be
+serviced by that IRECV, and not by our drain_packet()
+function.
+
+This also means we'll need two additional called before
+and after the exiting drain mechanism:
+  1) drain_serviced_irecv
+  2) cancel_unserviced_irecv
+
+Canceled irecv's shall be replayed upon restart
+
+
+new question:
+  Can a drained SEND that is cached cause an ordering issue
+  if it wouldn't have been serviced by the user application
+  until after the IRECV was serviced??
