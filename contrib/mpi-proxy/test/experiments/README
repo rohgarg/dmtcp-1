@@ -1,3 +1,5 @@
+recv_irecv
+
 this was to satiate my curiosity as to what would happen
 should a developer mix the usage of RECV and IRECV. I
 was concerned that a blocking receive may take presedence
@@ -28,3 +30,35 @@ new question:
   Can a drained SEND that is cached cause an ordering issue
   if it wouldn't have been serviced by the user application
   until after the IRECV was serviced??
+
+
+
+
+
+
+irecv_request_ids
+
+this was to satiate my curiosity as to what the contents
+of an MPI_Request pointer would be after an Isend/Irecv
+call.  I wanted to ensure that these result would actually
+be useful.  Also, I wanted to know what the contents were
+before and after the receives had completed.
+
+for MPICH they apparently decided the most-significant-bit
+would be set if the the request was still active, and after
+it had been served it would be cleared.  The lower bits
+(some number, not all) are used as an ID field, and seem to
+increment in a rational manner.
+
+finally, a long sleep was introduced to determine if these
+request values were updated silently.  At least under MPICH
+this is not the case, so we can (somewhat) safely assume we
+will not be introducing any race conditions.
+
+This will be useful for virtualizing these values, since no
+sane user application should actually care about the contents
+of an MPI_Request, and should simply be caching the values
+for internal use by their MPI implementation.
+
+This is also good to note should we move forward with the
+idea of checkpoint on one MPI and restart on a different MPI.
