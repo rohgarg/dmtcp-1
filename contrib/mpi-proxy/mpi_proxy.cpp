@@ -26,6 +26,11 @@
 int g_commrank = 0;
 int listfd = 0;
 
+std::vector<MPI_Request *>g_request_queue;
+std::map<MPI_Request, void *> g_hanging_isend;
+std::map<MPI_Request, void *> g_hanging_irecv;
+std::map<MPI_Request, int> g_hanging_irecv_size;
+
 int serial_printf(const char * msg)
 {
 #ifdef DEBUG_PRINTS
@@ -124,12 +129,6 @@ void MPIProxy_Type_size(int connfd)
 }
 
 
-std::vector<MPI_Request *>grequest_queue;
-
-// FIXME:  This is a massive hack to get performance measurements without
-// actually fixing the memory leak correctly
-// totally do not leave this in there, for the love of science
-void * send_buf = NULL;
 void MPIProxy_Send(int connfd)
 {
   int retval = 0;
@@ -139,12 +138,12 @@ void MPIProxy_Send(int connfd)
   int msgid;  // used to verify it was sent
   MPI_Datatype datatype;
   MPI_Comm comm;
+  void * send_buf = NULL;
 
   // Collect the arguments
   size = MPIProxy_Receive_Arg_Int(connfd);
 
   // Buffer read
-
   send_buf = malloc(size);
   MPIProxy_Receive_Arg_Buf(connfd, send_buf, size);
 
@@ -156,7 +155,6 @@ void MPIProxy_Send(int connfd)
   comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
 
   // Do the send
-  // FIXME: do i need to keep track of these for any reason?
   retval = MPI_Send(buf, count, datatype, dest, tag, comm);
 
   if (retval != MPI_SUCCESS)
@@ -165,7 +163,7 @@ void MPIProxy_Send(int connfd)
     fflush(stdout);
   }
 
-  free(buf); // TODO: Should I free here?
+  free(buf);
   MPIProxy_Return_Answer(connfd, retval);
 }
 
@@ -199,7 +197,6 @@ void MPIProxy_Isend(int connfd)
   MPIProxy_Receive_Arg_Buf(connfd, &request, sizeof(MPI_Request));
 
   // Do the send
-  // FIXME: do i need to keep track of these for any reason?
   retval = MPI_Isend(buf, count, datatype, dest, tag, comm, &request);
 
   if (retval != MPI_SUCCESS)
@@ -208,41 +205,37 @@ void MPIProxy_Isend(int connfd)
     fflush(stdout);
   }
 
-  // free(buf); // FIXME: Leaking memory!!!!
-  // this should be resolved trivially by sharing memory
+  g_hanging_isend[request] = buf;
 
   MPIProxy_Return_Answer(connfd, retval);
   MPIProxy_Send_Arg_Buf(connfd, &request, sizeof(MPI_Request));
 }
 
-std::map<MPI_Request, void *> g_hanging_irecv;
-std::map<MPI_Request, int> g_hanging_irecv_size;
 void MPIProxy_Wait(int connfd)
 {
   int retval = 0;
-  int irecv_size = 0;
-  void* ircv_buf = NULL;
+  int isend_size = 0;
+  void* isend_buf = NULL;
   std::map<MPI_Request, void*>::iterator it1;
   MPI_Request request;
   MPI_Status status;
 
+  // Wait is ONLY called for Send's in our design because
+  // doing a blocking call on a Recv is going to introduce deadlocks
   MPIProxy_Receive_Arg_Buf(connfd, &request, sizeof(MPI_Request));
   MPIProxy_Receive_Arg_Buf(connfd, &status, sizeof(MPI_Status));
 
-  MPI_Wait(&request, &status);
+  retval = MPI_Wait(&request, &status);
 
-  it = g_hanging_irecv.find(request);
-  if (it != g_hanging_irecv.end())
+  it = g_hanging_isend.find(request);
+  if (it != g_hanging_isend.end())
   {
-    irecv_buf = g_hanging_irecv[request];
-    irecv_size = g_hanging_irecv_size[request];
-    g_hanging_irecv.erase(request);
-    g_hanging_irecv_size.erase(request);
-    MPI_Proxy_Send_Arg_Buf(connfd, g_hanging_irecv[request],
-                                    g_hanging_irecv_size[request]);
-    free(irecv_buf);
-  }
+    isend_buf = g_hanging_isend[request];
+    g_hanging_isend.erase(request);
+    free(isend_buf);
+  } // FIXME: what if this is a wait for a request that doesn't exit?
 
+  MPIProxy_Send_Arg_Buf(connfd, retval, sizeof(MPI_Status));
   MPIProxy_Send_Arg_Buf(connfd, &request, sizeof(MPI_Request));
   MPIProxy_Send_Arg_Buf(connfd, &status, sizeof(MPI_Status));
 }

@@ -405,23 +405,27 @@ MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 }
 
 
-// Blocking Call must be handled safely
-EXTERNC int
-MPI_Wait(MPI_Request* request, MPI_Status* status)
+irecv_wait(MPI_Request* request, MPI_status* status)
 {
+  // Simple Recv wait solution: Spin on MPI_Test
+
+  // TODO: this irecv may have been serviced during a checkpoint,
+  // we need to check the receive cache here to see if that has been
+  // drained already
+
+  // TODO: if this was a Wait for an Irecv, update the receive buffer
+  // void * buf = g_irecv_buffers[request]
+  // unsigned int bufsize = g_buffer_size[request]
+  // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, bufsize);
+  // g_irecv_buffers.delete(request)
+  // g_buffer_size.delete(request)
+}
+
+isend_wait(MPI_Request* request, MPI_Status* status)
+{
+  int retval = 0;
   int flags = 0;
   int sockstat = EWOULDBLOCK;
-  int retval = 0;
-
-  // FIXME: IT IS NEVER SAFE TO WAIT ON AN IRECV REQUEST
-  // DIFFERENTIATE AND USE A DIFFERENT BEHAVIOR IF THE
-  // MPI_REQUEST VALUE MATCHES AN IRECV VALUE
-
-  // NOTE: The following code only works for SENDING calls
-  // utilizing the following code for calls that RECEIVE
-  // Will introduce a deadlock situation if a checkpoint
-  // occurs and the sender has not sent yet.
-
   // Send Wait request
   DMTCP_PLUGIN_DISABLE_CKPT();
   g_pending_wait = true;
@@ -458,13 +462,6 @@ MPI_Wait(MPI_Request* request, MPI_Status* status)
       Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                               status,
                               sizeof(MPI_Status));
-
-      // TODO: if this was a Wait for an Irecv, update the receive buffer
-      // void * buf = g_irecv_buffers[request]
-      // unsigned int bufsize = g_buffer_size[request]
-      // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, bufsize);
-      // g_irecv_buffers.delete(request)
-      // g_buffer_size.delete(request)
     }
     DMTCP_PLUGIN_ENABLE_CKPT();
   }
@@ -472,6 +469,29 @@ MPI_Wait(MPI_Request* request, MPI_Status* status)
   if (g_restart_receive)
     retval = g_restart_retval;
 
+  return retval;
+}
+
+// Blocking Call must be handled safely
+EXTERNC int
+MPI_Wait(MPI_Request* request, MPI_Status* status)
+{
+  int retval = 0;
+  // FIXME: handle fail case of request not in map
+  // dispatch to irecv/isend_wait
+
+  switch(g_request_types[*request])
+  {
+    case ISEND_REQUEST:
+      retval = isend_wait(request, status);
+      break;
+    case IRECV_REQUEST:
+      retval = irecv_wait(request, status);
+      break;
+    default:
+      // UNKNOWN TYPE?!
+      break;
+  }
   return retval;
 }
 

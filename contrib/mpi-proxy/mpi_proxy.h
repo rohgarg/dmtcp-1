@@ -16,6 +16,7 @@ enum MPI_Proxy_Commands
   MPIProxy_Cmd_Isend,
   MPIProxy_Cmd_Irecv,
   MPIProxy_Cmd_Wait,
+  MPIProxy_Cmd_Test,
   MPIProxy_Cmd_Shutdown_Proxy = 0xFFFFFFFF,
 };
 
