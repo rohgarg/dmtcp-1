@@ -15,6 +15,7 @@
 #include <vector>
 #include <map>
 
+#include "mpi_plugin.h"
 #include "mpi_proxy.h"
 #include "config.h"
 #include "dmtcp.h"
@@ -24,29 +25,45 @@
 
 // #define DEBUG
 
-int gworld_rank = 0;
-int gworld_size = 0;
+int g_world_rank = 0;
+int g_world_size = 0;
 
-int gworld_sent = 0;
-int gworld_recv = 0;
-int glocal_sent = 0;
-int glocal_recv = 0;
+// this is the global and local send/recv counts that will be used
+// in order to determine whether the network has been succesfully
+// drained
+int g_world_sent = 0;
+int g_world_recv = 0;
+int g_local_sent = 0;
+int g_local_recv = 0;
 
-typedef struct Message
-{
-  void * buf;
-  int count;
-  MPI_Datatype datatype;
-  MPI_Comm comm;
-  MPI_Status status;
-  int size;
-} Message;
+// global status booleans used to inform a blocking Isend or Wait
+// that it has been completed after restart.
+bool g_restart_receive;
+bool g_restart_retval;
+bool g_pending_send;
+bool g_pending_wait;
 
-std::vector<Message *>gmessage_queue;
+// cached wait request information - required to update a blocking
+// Wait upon restart.
+MPI_Request* g_pending_wait_request;
+MPI_Status* g_pending_wait_status;
 
-#define MPI_PLUGIN_PROXY_PACKET_WAITING 0
-#define MPI_PLUGIN_BUFFERED_PACKET_WAITING 1
-#define MPI_PLUGIN_NO_PACKET_WAITING 2
+// cached messages drained during a checkpoint
+std::vector<Message *> g_message_queue;
+
+// map of requests for use in differentiating between Send and Recv
+// during an MPI_Wait in order to avoid a deadlock.
+std::map<MPI_Request, MPI_Plugin_Request_Type> g_request_types;
+
+// unserviced irecv requests
+std::map<MPI_Request*, Irecv_Params*> g_irecv_replays;
+
+// serviced but un-MPI_Test/Wait'd irecv requests
+std::map<MPI_Request*, Irecv_Params*> g_irecv_cache;
+
+// whether or not a request has been services
+std::map<MPI_Request*, bool> g_request_map;
+
 
 void mpi_proxy_wait_for_instructions();
 
@@ -59,8 +76,6 @@ int Receive_Int_From_Proxy(int connfd)
     return retval;
 }
 
-bool g_restart_receive;
-bool g_restart_retval;
 int Complete_Blocking_Call_Safely(int connfd)
 {
   int flags = 0;
@@ -136,7 +151,7 @@ void close_proxy(void)
 bool matching_buffered_packet(int source, int tag, MPI_Comm comm)
 {
   std::vector<Message *>::iterator itt;
-  for(itt = gmessage_queue.begin(); itt != gmessage_queue.end(); itt++)
+  for(itt = g_message_queue.begin(); itt != g_message_queue.end(); itt++)
   {
     Message * msg = *itt;
     if (((msg->status.MPI_SOURCE == source) | (source == MPI_ANY_SOURCE))
@@ -195,7 +210,7 @@ int mpi_plugin_return_buffered_packet(void *buf, int count, int datatype,
   int element = 0;
   std::vector<Message *>::iterator itt;
   Message * msg;
-  for(itt = gmessage_queue.begin(); itt != gmessage_queue.end(); itt++)
+  for(itt = g_message_queue.begin(); itt != g_message_queue.end(); itt++)
   {
     msg = *itt;
     if (((msg->status.MPI_SOURCE == source) | (source == MPI_ANY_SOURCE))
@@ -206,7 +221,7 @@ int mpi_plugin_return_buffered_packet(void *buf, int count, int datatype,
     }
     element++;
   }
-  if (itt == gmessage_queue.end())
+  if (itt == g_message_queue.end())
   {
     // this should never happen!
     return -1;
@@ -214,7 +229,7 @@ int mpi_plugin_return_buffered_packet(void *buf, int count, int datatype,
 
   cpysize = (size < msg->size) ? size: msg->size;
   memcpy(buf, msg->buf, cpysize);
-  gmessage_queue.erase(gmessage_queue.begin()+element);
+  g_message_queue.erase(g_message_queue.begin()+element);
   free(msg->buf);
   free(msg);
   // TODO: Actually handle MPI_Status that isn't MPI_STATUS_IGNORE
@@ -223,7 +238,6 @@ int mpi_plugin_return_buffered_packet(void *buf, int count, int datatype,
 }
 
 
-/* hello-world */
 EXTERNC int
 MPI_Init(int *argc, char ***argv)
 {
@@ -233,8 +247,8 @@ MPI_Init(int *argc, char ***argv)
   status = exec_proxy_cmd(MPIProxy_Cmd_Init);
   DMTCP_PLUGIN_ENABLE_CKPT();
   // get our rank;
-  MPI_Comm_rank(MPI_COMM_WORLD, &gworld_rank);
-  MPI_Comm_size(MPI_COMM_WORLD, &gworld_size);
+  MPI_Comm_rank(MPI_COMM_WORLD, &g_world_rank);
+  MPI_Comm_size(MPI_COMM_WORLD, &g_world_size);
   return status;
 }
 
@@ -264,7 +278,7 @@ MPI_Comm_rank(int group, int *world_rank)
   if (status == MPI_SUCCESS) {
     *world_rank = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
     JTRACE("*** GOT RANK\n");
-    gworld_rank = *world_rank;
+    g_world_rank = *world_rank;
   }
   DMTCP_PLUGIN_ENABLE_CKPT();
   return status;
@@ -300,7 +314,6 @@ MPI_Get_count(const MPI_Status *status, MPI_Datatype datatype, int *count)
 }
 
 // Blocking Call must be handled safely
-bool g_pending_send;
 EXTERNC int
 MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
           MPI_Comm comm)
@@ -331,7 +344,7 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     // Get the status
   }
-  glocal_sent++;
+  g_local_sent++;
   DMTCP_PLUGIN_ENABLE_CKPT();
 
   // Block *safely* until we receive the status back
@@ -341,9 +354,6 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
   return status;
 }
-
-std::map<MPI_Request*, bool> g_request_map;
-std::map<MPI_Request*, MPI_Status*> g_test_status_map;
 
 EXTERNC int
 MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
@@ -360,7 +370,6 @@ MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     // TODO: Only need to do this if it's a stack pointer?
     // if this is a heap pointer, we can share the malloc'd page
     g_request_map[request] = false;
-    g_test_status_map[request] = NULL;
 
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Send);
 
@@ -379,20 +388,22 @@ MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     // Get the status
     status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
 
+    // TODO: Handle fail case?
+
     // Get the Request Info
     Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                             request,
                             sizeof(MPI_Request));
+
+    // TODO: insert into request map
+    g_request_type[*request] = ISEND_REQUEST;
   }
-  glocal_sent++;
+  g_local_sent++;
   DMTCP_PLUGIN_ENABLE_CKPT();
 
   return status;
 }
 
-bool g_pending_wait;
-MPI_Request* g_pending_wait_request;
-MPI_Status* g_pending_wait_status;
 
 // Blocking Call must be handled safely
 EXTERNC int
@@ -401,6 +412,15 @@ MPI_Wait(MPI_Request* request, MPI_Status* status)
   int flags = 0;
   int sockstat = EWOULDBLOCK;
   int retval = 0;
+
+  // FIXME: IT IS NEVER SAFE TO WAIT ON AN IRECV REQUEST
+  // DIFFERENTIATE AND USE A DIFFERENT BEHAVIOR IF THE
+  // MPI_REQUEST VALUE MATCHES AN IRECV VALUE
+
+  // NOTE: The following code only works for SENDING calls
+  // utilizing the following code for calls that RECEIVE
+  // Will introduce a deadlock situation if a checkpoint
+  // occurs and the sender has not sent yet.
 
   // Send Wait request
   DMTCP_PLUGIN_DISABLE_CKPT();
@@ -564,7 +584,7 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                                   sizeof(MPI_Status));
       }
       done = true;
-      gworld_recv++;
+      g_world_recv++;
     }
     // no packet waiting, allow a moment to sleep in case we need to checkpoint
     DMTCP_PLUGIN_ENABLE_CKPT();
@@ -573,28 +593,6 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   }
   return status;
 }
-
-typedef struct Irecv_Params
-{
-  // request parameters
-  void * buf;
-  int count;
-  MPI_Datatype datatype;
-  int source;
-  int tag;
-  MPI_Comm comm;
-  MPI_Request * request;
-  // response parameters
-  int flag;
-  MPI_Status status;
-} Irecv_Params;
-
-
-// unserviced irecv requests
-std::map<MPI_Request*, Irecv_Params*> g_irecv_replays;
-
-// serviced but un-MPI_Test/Wait'd irecv requests
-std::map<MPI_Request*, Irecv_Params*> g_irecv_cache;
 
 EXTERNC int
 MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
@@ -690,7 +688,7 @@ pre_ckpt_update_ckpt_dir()
     baseDir = ckptDir;
   }
   dmtcp::ostringstream o;
-  o << baseDir << "/ckpt_rank_" << gworld_rank;
+  o << baseDir << "/ckpt_rank_" << g_world_rank;
   dmtcp_set_ckpt_dir(o.str().c_str());
 }
 
@@ -764,8 +762,8 @@ static bool drain_packet()
   message->size       = size;
 
   // queue it
-  gmessage_queue.push_back(message);
-  glocal_recv++;
+  g_message_queue.push_back(message);
+  g_local_recv++;
   return true;
 }
 
@@ -781,15 +779,15 @@ static void
 pre_ckpt_register_data()
 {
   // publish my keys and values
-  mystruct.typerank = gworld_rank;
-  mystruct.value = glocal_sent;
+  mystruct.typerank = g_world_rank;
+  mystruct.value = g_local_sent;
   dmtcp_send_key_val_pair_to_coordinator("mpi-proxy",
                                           &(mystruct.typerank),
                                           sizeof(mystruct.typerank),
                                           &(mystruct.value),
                                           sizeof(mystruct.value));
   mystruct.typerank |= HIGHBIT;
-  mystruct.value = glocal_recv;
+  mystruct.value = g_local_recv;
   dmtcp_send_key_val_pair_to_coordinator("mpi-proxy",
                                           &(mystruct.typerank),
                                           sizeof(mystruct.typerank),
@@ -802,10 +800,10 @@ static void
 get_packets_sent()
 {
   int i = 0;
-  gworld_sent = glocal_sent;
-  for (i = 0; i < gworld_size; i++)
+  g_world_sent = g_local_sent;
+  for (i = 0; i < g_world_size; i++)
   {
-    if (i == gworld_rank)
+    if (i == g_world_rank)
       continue;
     // get number of sent packets by this proxy
     mystruct_other.typerank = i;
@@ -815,7 +813,7 @@ get_packets_sent()
                                       sizeof(mystruct_other.typerank),
                                       &(mystruct_other.value),
                                       &sizeofval);
-    gworld_sent += mystruct_other.value;
+    g_world_sent += mystruct_other.value;
   }
 }
 
@@ -823,13 +821,13 @@ static void
 get_packets_recv()
 {
   int i = 0;
-  gworld_recv = 0;
+  g_world_recv = 0;
   // get everyone elses keys and values
-  for (i = 0; i < gworld_size; i++)
+  for (i = 0; i < g_world_size; i++)
   {
-    if (i == gworld_rank)
+    if (i == g_world_rank)
     {
-      gworld_recv += glocal_recv;
+      g_world_recv += g_local_recv;
       continue;
     }
 
@@ -841,15 +839,15 @@ get_packets_recv()
                                       sizeof(mystruct_other.typerank),
                                       &(mystruct_other.value),
                                       &sizeofval);
-    gworld_recv += mystruct_other.value;
+    g_world_recv += mystruct_other.value;
   }
 }
 
 static void
 publish_packets_recv()
 {
-  mystruct.typerank = gworld_rank | HIGHBIT;
-  mystruct.value = glocal_recv;
+  mystruct.typerank = g_world_rank | HIGHBIT;
+  mystruct.value = g_local_recv;
   dmtcp_send_key_val_pair_to_coordinator("mpi-proxy",
                                           &(mystruct.typerank),
                                           sizeof(mystruct.typerank),
@@ -928,19 +926,6 @@ drain_irecvs()
       }
     } // TODO: retval = failure?
   }
-
-  // TODO: if this was a Wait for an Irecv, update the receive buffer
-  // for (queued_irecv)
-    // MPI_Test(Request, Status)
-    // if (ready)
-      // void * buf = g_irecv_buffers[request]
-      // unsigned int bufsize = g_buffer_size[request]
-      // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, bufsize);
-      // g_irecv_buffers.delete(request)
-      // g_buffer_size.delete(request)
-      // g_replay_commands.delete(request)
-      // TODO: update cached irecv Requests
-      // received_msgs++;
 }
 
 static void
@@ -951,7 +936,7 @@ pre_ckpt_drain_data_from_proxy()
 
   complete_blocking_call();
 
-  while (gworld_sent != gworld_recv)
+  while (g_world_sent != g_world_recv)
   {
     drain_irecvs();
     drain_packet();
@@ -965,10 +950,10 @@ pre_ckpt_drain_data_from_proxy()
 
   // on restart, we want to start totally fresh, since everything
   // is sent and received, these numbers are now totally irrelevant
-  gworld_sent = 0;
-  gworld_recv = 0;
-  glocal_sent = 0;
-  glocal_recv = 0;
+  g_world_sent = 0;
+  g_world_recv = 0;
+  g_local_sent = 0;
+  g_local_recv = 0;
 }
 
 static DmtcpBarrier mpiPluginBarriers[] = {
