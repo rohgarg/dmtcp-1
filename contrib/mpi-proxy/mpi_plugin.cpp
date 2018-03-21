@@ -551,7 +551,8 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
       if (mpi_status == MPI_STATUS_IGNORE)
         Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
       else
-        Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0x0);
+        Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0x0); // FIXME
+        // actually handle something other than MPI_STATUS_IGNORE
 
       status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       if (status == 0)
@@ -573,9 +574,28 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   return status;
 }
 
+typedef struct Irecv_Params
+{
+  // request parameters
+  void * buf;
+  int count;
+  MPI_Datatype datatype;
+  int source;
+  int tag;
+  MPI_Comm comm;
+  MPI_Request * request;
+  // response parameters
+  int flag;
+  MPI_Status status;
+} Irecv_Params;
 
-std::map<MPI_Request*, void *> g_irecv_buffer;
-std::map<MPI_Request*, int> g_irecv_buffer_size;
+
+// unserviced irecv requests
+std::map<MPI_Request*, Irecv_Params*> g_irecv_replays;
+
+// serviced but un-MPI_Test/Wait'd irecv requests
+std::map<MPI_Request*, Irecv_Params*> g_irecv_cache;
+
 EXTERNC int
 MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
           MPI_Comm comm, MPI_Request *request)
@@ -583,6 +603,7 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   int status = 0xFFFFFFFF;
   int size = 0;
   bool done = false;
+  Irecv_Params* replay = NULL;
 
   // calculate total size of expected message before we do anything
   status = MPI_Type_size(datatype, &size);
@@ -590,6 +611,21 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
 
   // during this critical section we must disable checkpointing
   DMTCP_PLUGIN_DISABLE_CKPT();
+
+  // Save all of this info to our replay buffer for after a restart
+  // occurs.  We need to do this for any Irecv calls that remain
+  // unserviced after
+  replay = malloc(sizeof(Irecv_Params));
+  replay->buf = buf;
+  replay->count = count;
+  replay->datatype = datatype;
+  replay->source = source;
+  replay->tag = tag;
+  replay->comm = comm;
+  // make sure we set the output parameters to known values
+  replay->flag = 0;
+  replay->status = MPI_STATUS_IGNORE; // FIXME: is this correct?
+
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Irecv);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)datatype);
@@ -601,10 +637,16 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
   if (status == 0)
   {
-    Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, &request,
+    Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, request,
                             sizeof(MPI_Request));
-    g_irecv_buffer[*request] = buf;
-    g_irecv_buffer_size[*request] = size;
+    // save the address of request
+    replay->request = request;
+    g_irecv_replays[request] = replay;
+  }
+  else
+  {
+    // don't leak memory, clean up and don't store this if it fails
+    free(replay);
   }
   DMTCP_PLUGIN_ENABLE_CKPT();
 
@@ -839,6 +881,54 @@ complete_blocking_call()
 static void
 drain_irecvs()
 {
+  // unserviced irecv requests
+  // std::map<MPI_Request, Irecv_Params*> g_irecv_replays;
+  // serviced but un-MPI_Test/Wait'd irecv requests
+  // std::map<MPI_Request, Irecv_Params*> g_irecv_cache;
+
+  MPI_Request* request;
+  Irecv_Params* params;
+  std::map<MPI_Request*, Irecv_Params*>::iterator it;
+
+  for (it = g_irecv_replays.begin(); it != g_irecv_replays.end(); it++)
+  {
+    int retval = 0;
+    MPI_Status status;
+    int flag = 0;
+    request = it->first;
+    params = it->second;
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
+
+    Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD, &retval); // return value
+    if (retval == MPI_SUCCESS)
+    {
+      Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD, &flag); // completed?
+      Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD, &status); // STATUS_IGNORE
+      if (flag)
+      {
+        // this information also needs to be cached for when the application
+        // finally does its own MPI_Test or MPI_Wait on the given MPI_Request
+        params->flag = flag;
+        params->status = status;
+        // drain this packet and put it into g_irecv_cache
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                params->buf,
+                                params->size)
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                request,
+                                sizeof(MPI_Request));
+
+        // put the request into the g_irecv_queue
+        g_irecv_cache[it->first] = it->second;
+
+        // delete from g_irecv_replay
+        g_irecv_replays.delete(it->first);
+      }
+    } // TODO: retval = failure?
+  }
+
   // TODO: if this was a Wait for an Irecv, update the receive buffer
   // for (queued_irecv)
     // MPI_Test(Request, Status)
