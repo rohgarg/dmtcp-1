@@ -3,6 +3,7 @@
 enum MPI_Proxy_Commands
 {
   MPIProxy_ERROR = 0,
+  // MPI Calls
   MPIProxy_Cmd_Init,
   MPIProxy_Cmd_Finalize,
   MPIProxy_Cmd_Get_CommSize,
@@ -17,6 +18,11 @@ enum MPI_Proxy_Commands
   MPIProxy_Cmd_Irecv,
   MPIProxy_Cmd_Wait,
   MPIProxy_Cmd_Test,
+
+  // Draining Commands
+  MPIProxy_Drain_Irecv,
+
+  // Proxy Commands
   MPIProxy_Cmd_Shutdown_Proxy = 0xFFFFFFFF,
 };
 

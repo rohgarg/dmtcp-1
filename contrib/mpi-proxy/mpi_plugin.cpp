@@ -404,6 +404,48 @@ MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
   return status;
 }
 
+EXTERNC int
+MPI_Test(MPI_Request* request, int* flag, MPI_Status* status)
+{
+  int retval = 0;
+  char * rbuf = NULL;
+  int size = 0;
+  MPI_Plugin_Request_Type rtype = 0xFFFFFFFF;
+  DMTCP_PLUGIN_DISABLE_CKPT();
+
+  if () // TODO: check for a cached result
+  {
+    // if cached, buffer should already be populated on drain
+  }
+  else // check for result on proxy
+  {
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, *request);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
+    // TODO: handle other MPI_Status's
+
+    status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+    if (status == 0)
+    {
+      *request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      *flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      *status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+
+      // TODO: get request type, drain if it is complete and this was Irecv
+      if (*flag == 1 && rtype == IRECV_REQUEST) // drain is ready!
+      {
+        // drain from proxy
+        // TODO get receive buffer
+        // TODO get receive buffer size
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, size);
+      }
+    }
+    // TODO: else - error handling?
+  }
+  DMTCP_PLUGIN_ENABLE_CKPT();
+
+  return retval;
+}
 
 irecv_wait(MPI_Request* request, MPI_status* status)
 {
@@ -412,6 +454,12 @@ irecv_wait(MPI_Request* request, MPI_status* status)
   // TODO: this irecv may have been serviced during a checkpoint,
   // we need to check the receive cache here to see if that has been
   // drained already
+
+
+
+  DMTCP_PLUGIN_DISABLE_CKPT();
+
+  DMTCP_PLUGIN_ENABLE_CKPT();
 
   // TODO: if this was a Wait for an Irecv, update the receive buffer
   // void * buf = g_irecv_buffers[request]

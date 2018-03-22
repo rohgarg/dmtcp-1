@@ -1,3 +1,5 @@
+/* CopyLeft Gregory Price (2018) */
+
 #include <mpi.h>
 #include <stdint.h>
 
