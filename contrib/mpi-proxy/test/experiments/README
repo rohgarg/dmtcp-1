@@ -25,6 +25,9 @@ and after the exiting drain mechanism:
 
 Canceled irecv's shall be replayed upon restart
 
+Note that a RECV cannot cause an ordering issue because
+there are only two cases:  Isend -> Recv, or just Recv.
+Because Recv blocks, no future Isend's can be queued.
 
 new question:
   Can a drained SEND that is cached cause an ordering issue
