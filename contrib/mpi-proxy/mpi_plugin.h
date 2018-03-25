@@ -33,7 +33,8 @@ typedef struct Async_Message
   bool serviced;
   MPI_Plugin_Request_Type type;
   // request parameters
-  void* buf;
+  const void* sendbuf;
+  void* recvbuf;
   int count;
   MPI_Datatype datatype;
   int size;
