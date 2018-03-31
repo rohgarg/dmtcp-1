@@ -4,23 +4,23 @@ enum MPI_Proxy_Commands
 {
   MPIProxy_ERROR = 0,
   // MPI Calls
-  MPIProxy_Cmd_Init,
-  MPIProxy_Cmd_Finalize,
-  MPIProxy_Cmd_Get_CommSize,
-  MPIProxy_Cmd_Get_CommRank,
-  MPIProxy_Cmd_Get_ProcessorName,
-  MPIProxy_Cmd_Send,
-  MPIProxy_Cmd_Recv,
-  MPIProxy_Cmd_Type_size,
-  MPIProxy_Cmd_Iprobe,
-  MPIProxy_Cmd_Get_count,
-  MPIProxy_Cmd_Isend,
-  MPIProxy_Cmd_Irecv,
-  MPIProxy_Cmd_Wait,
-  MPIProxy_Cmd_Test,
+  MPIProxy_Cmd_Init = 1,
+  MPIProxy_Cmd_Finalize = 2,
+  MPIProxy_Cmd_Get_CommSize = 3,
+  MPIProxy_Cmd_Get_CommRank = 4,
+  MPIProxy_Cmd_Get_ProcessorName = 5,
+  MPIProxy_Cmd_Send = 6,
+  MPIProxy_Cmd_Recv = 7,
+  MPIProxy_Cmd_Type_size = 8,
+  MPIProxy_Cmd_Iprobe = 9,
+  MPIProxy_Cmd_Get_count = 10,
+  MPIProxy_Cmd_Isend = 11,
+  MPIProxy_Cmd_Irecv = 12,
+  MPIProxy_Cmd_Wait = 13,
+  MPIProxy_Cmd_Test = 14,
 
   // Draining Commands
-  MPIProxy_Drain_Irecv,
+  MPIProxy_Drain_Irecv = 0x80000000,
 
   // Proxy Commands
   MPIProxy_Cmd_Shutdown_Proxy = 0xFFFFFFFF,

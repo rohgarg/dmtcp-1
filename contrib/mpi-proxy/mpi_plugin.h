@@ -3,6 +3,8 @@
 #include <mpi.h>
 #include <stdint.h>
 
+#define DRAINED_REQUEST_VALUE 0xffffffff
+
 enum MPI_Plugin_Recv_Status
 {
   MPI_PLUGIN_PROXY_PACKET_WAITING,

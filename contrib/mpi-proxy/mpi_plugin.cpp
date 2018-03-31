@@ -57,10 +57,6 @@ std::map<MPI_Request*, Async_Message*> g_async_messages;
 // serviced but un-MPI_Test/Wait'd irecv requests
 std::map<MPI_Request*, Async_Message*> g_irecv_cache;
 
-// whether or not a request has been services
-std::map<MPI_Request*, bool> g_request_map;
-
-
 void mpi_proxy_wait_for_instructions();
 
 int Receive_Int_From_Proxy(int connfd)
@@ -108,14 +104,16 @@ int Receive_Buf_From_Proxy(int connfd, void* buf, int size)
 
 int Send_Int_To_Proxy(int connfd, int arg)
 {
-    int status = write(connfd, &arg, sizeof(int));
+    int status;
+    status = write(connfd, &arg, sizeof(int));
     // TODO: error check
     return status;
 }
 
 int Send_Buf_To_Proxy(int connfd, const void* buf, int size)
 {
-    int status = write(connfd, buf, size);
+    int status;
+    status = write(connfd, buf, size);
     // TODO: error check
     return status;
 }
@@ -329,7 +327,7 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
 
     // Buf part
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count * size);
-    write(PROTECTED_MPI_PROXY_FD, buf, count*size);
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, buf, count*size);
 
     // rest of stuff
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
@@ -384,11 +382,11 @@ MPI_Isend(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
     message->flag = false;
     memset(&message->status, 0, sizeof(MPI_Status));
 
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Send);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Isend);
 
     // Send buf to proxy
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count * size);
-    write(PROTECTED_MPI_PROXY_FD, buf, count*size);
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, buf, count*size);
 
     // send rest of stuff
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
@@ -424,31 +422,28 @@ MPI_Test(MPI_Request* request, int* flag, MPI_Status* status)
 
   DMTCP_PLUGIN_DISABLE_CKPT();
 
-  if (message->serviced) // TODO: check for a cached result
+  if (message->serviced) // cached result)
   {
     // if cached, buffer should already be populated on drain
-    // TODO: ensure request == message->request
     memcpy(status, &message->status, sizeof(MPI_Status));
     *flag = message->flag;
   }
   else // not serviced during checkpoint/restart - check for result on proxy
   {
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, *request);
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
-    // TODO: handle other MPI_Status's
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
+    // TODO handle an actual status
+    // Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
 
     retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-    if (status == 0)
+    if (retval == 0)
     {
       *request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       *flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                              status,
-                              sizeof(MPI_Status));
+      // TODO: Handle MPI_Status correctly
 
       // Drain if it is complete and this was Irecv
-      if (*flag == 1 && message->type == IRECV_REQUEST) // drain is ready!
+      if (flag && message->type == IRECV_REQUEST) // drain is ready!
       {
         Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                                 message->recvbuf,
@@ -471,7 +466,9 @@ MPI_Test(MPI_Request* request, int* flag, MPI_Status* status)
 
 int irecv_wait(MPI_Request* request, MPI_Status* status)
 {
+  int retval = 0;
   bool done = false;
+  int flag = 0;
   // Simple Recv wait solution: Spin on MPI_Test
 
   // TODO: this irecv may have been serviced during a checkpoint,
@@ -484,32 +481,43 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
 
     if (message->serviced) // message has been drained
     {
-      *status = message->status;
+      memcpy(status, &message->status, sizeof(MPI_Status));
 
       // clean up our message queue
-      g_async_messages.erase(request);
-      free(message);
       done = true;
     }
-    else
+    else // message has not been drained, do a test
     {
-      // TODO: MPI_Test: flag == done
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, *request);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
+      // TODO: handle other MPI_Status's
 
-      if (done)
+      retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      if (retval == 0)
       {
-        // TODO drain mesage from proxy
+        *request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+        flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                status,
+                                sizeof(MPI_Status));
+
+        if (flag == 1) // drain is ready!
+        {
+          Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                  message->recvbuf,
+                                  message->size);
+        }
       }
     }
-    // give ourselves a moment to spin
+    // give ourselves a moment to checkpoint while spinning
     DMTCP_PLUGIN_ENABLE_CKPT();
   }
 
-  // TODO: if this was a Wait for an Irecv, update the receive buffer
-  // void * buf = g_irecv_buffers[request]
-  // unsigned int bufsize = g_buffer_size[request]
-  // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, bufsize);
-  // g_irecv_buffers.erase(request)
-  // g_buffer_size.erase(request)
+  // when this completes we know we're done
+  g_async_messages.erase(request);
+  free(message);
+  return 0;
 }
 
 int isend_wait(MPI_Request* request, MPI_Status* status)
@@ -737,6 +745,7 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   message->remote_node = source;
   message->tag = tag;
   message->comm = comm;
+  message->request = request;
   // make sure we set the output parameters to known values
   message->flag = 0;
   memset(&message->status, 0, sizeof(MPI_Status)); // FIXME: is this correct?
@@ -744,11 +753,22 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   // TODO Check drained message cache for a cached message
   // if it's cached we can simply do the copy and set our message
   // to serviced for quick handling during the next test/wait
-  if () // check for cached message returns true
+  if (matching_buffered_packet(source, tag, comm))
   {
     // copy stuff
     // set to serviced
+    message->serviced = true;
+    *message->request = DRAINED_REQUEST_VALUE;
+    mpi_plugin_return_buffered_packet(buf,
+                                      count,
+                                      datatype,
+                                      source,
+                                      tag,
+                                      comm,
+                                      &message->status,
+                                      size);
     retval = 0;
+    g_async_messages[request] = message;
   }
   else // queue it up on the proxy
   {
@@ -759,22 +779,22 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, tag);
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
     Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
-  }
 
-  retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-  if (retval == 0)
-  {
-    Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, request,
-                            sizeof(MPI_Request));
-    // save the address of request
-    message->request = request;
-    g_async_messages[request] = message;
-  }
-  else
-  {
-    // TODO: any error checking related stuff?
-    // don't leak memory, clean up and don't store this if it fails
-    free(message);
+    retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+    if (retval == 0)
+    {
+      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, request,
+                              sizeof(MPI_Request));
+      // save the address of request
+      message->request = request;
+      g_async_messages[request] = message;
+    }
+    else
+    {
+      // TODO: any error checking related stuff?
+      // don't leak memory, clean up and don't store this if it fails
+      free(message);
+    }
   }
   DMTCP_PLUGIN_ENABLE_CKPT();
 
@@ -1072,8 +1092,6 @@ pre_ckpt_drain_data_from_proxy()
     publish_packets_recv();
     get_packets_recv();
   }
-
-  // TODO: set all g_request_map[x] to true and *x = MPI_REQUEST_NULL
 
   // on restart, we want to start totally fresh, since everything
   // is sent and received, these numbers are now totally irrelevant
