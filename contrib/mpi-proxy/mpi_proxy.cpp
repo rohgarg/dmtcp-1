@@ -223,9 +223,12 @@ void MPIProxy_Wait(int connfd)
   // Wait is ONLY called for Send's in our design because
   // doing a blocking call on a Recv is going to introduce deadlocks
   MPIProxy_Receive_Arg_Buf(connfd, &request, sizeof(MPI_Request));
-  MPIProxy_Receive_Arg_Buf(connfd, &status, sizeof(MPI_Status));
 
-  retval = MPI_Wait(&request, &status);
+  // FIXME: handle actual MPI_Status values
+  // MPIProxy_Receive_Arg_Buf(connfd, &status, sizeof(MPI_Status));
+
+  // FIXME: handle actual MPI_Status values
+  retval = MPI_Wait(&request, MPI_STATUS_IGNORE);
 
   it = g_hanging_isend.find(request);
   if (it != g_hanging_isend.end())
@@ -237,7 +240,9 @@ void MPIProxy_Wait(int connfd)
 
   MPIProxy_Send_Arg_Int(connfd, retval);
   MPIProxy_Send_Arg_Buf(connfd, &request, sizeof(MPI_Request));
-  MPIProxy_Send_Arg_Buf(connfd, &status, sizeof(MPI_Status));
+
+  // FIXME: handle actual MPI_Status values
+  // MPIProxy_Send_Arg_Buf(connfd, &status, sizeof(MPI_Status));
 }
 
 void MPIProxy_Test(int connfd)

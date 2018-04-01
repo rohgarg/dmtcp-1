@@ -514,9 +514,6 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
     DMTCP_PLUGIN_ENABLE_CKPT();
   }
 
-  // when this completes we know we're done
-  g_async_messages.erase(request);
-  free(message);
   return 0;
 }
 
@@ -526,6 +523,7 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
   int flags = 0;
   int sockstat = EWOULDBLOCK;
   // Send Wait request
+
   DMTCP_PLUGIN_DISABLE_CKPT();
   g_pending_wait = true;
   g_restart_receive = false;
@@ -534,7 +532,9 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
   g_pending_wait_status = status;
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Wait);
   Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
-  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, status, sizeof(MPI_Status));
+
+  // FIXME: handle actual MPI_Status value.  Default to STATUS_IGNORE for now
+  // Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, status, sizeof(MPI_Status));
   DMTCP_PLUGIN_ENABLE_CKPT();
 
   // Block *safely* until we receive the status back
@@ -558,9 +558,10 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
       Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                               request,
                               sizeof(MPI_Request));
-      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                              status,
-                              sizeof(MPI_Status));
+      // FIXME: handle actual MPI_Status values
+      // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+      //                        status,
+      //                        sizeof(MPI_Status));
     }
     DMTCP_PLUGIN_ENABLE_CKPT();
   }
