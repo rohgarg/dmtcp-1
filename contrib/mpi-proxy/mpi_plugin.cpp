@@ -438,12 +438,14 @@ MPI_Test(MPI_Request* request, int* flag, MPI_Status* status)
     retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
     if (retval == 0)
     {
-      *request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                              request,
+                              sizeof(MPI_Request));
       *flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       // TODO: Handle MPI_Status correctly
 
       // Drain if it is complete and this was Irecv
-      if (flag && message->type == IRECV_REQUEST) // drain is ready!
+      if (*flag && message->type == IRECV_REQUEST) // drain is ready!
       {
         Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                                 message->recvbuf,
@@ -747,6 +749,7 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
   message->tag = tag;
   message->comm = comm;
   message->request = request;
+  message->size = size;
   // make sure we set the output parameters to known values
   message->flag = 0;
   memset(&message->status, 0, sizeof(MPI_Status)); // FIXME: is this correct?
@@ -1052,10 +1055,11 @@ resolve_async_messages()
     if (retval == MPI_SUCCESS)
     {
       message->flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      // FIXME: handle actual MPI_Status
       // this will probably end up being MPI_STATUS_IGNORE
-      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                              &message->status,
-                              sizeof(MPI_Status));
+      // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+      //                        &message->status,
+      //                        sizeof(MPI_Status));
       if (flag)
       {
         // this information also needs to be cached for when the application

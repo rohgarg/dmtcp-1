@@ -466,6 +466,10 @@ void proxy(int connfd)
       serial_printf("PROXY(Recv) - ");
       MPIProxy_Recv(connfd);
       break;
+    case MPIProxy_Cmd_Irecv:
+      serial_printf("PROXY(Irecv) - ");
+      MPIProxy_Irecv(connfd);
+      break;
     case MPIProxy_Cmd_Wait:
       serial_printf("PROXY(Wait) - ");
       MPIProxy_Wait(connfd);
