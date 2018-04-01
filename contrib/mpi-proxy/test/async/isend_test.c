@@ -25,7 +25,7 @@ int main(int argc, char** argv) {
   if (world_rank == 0)
   {
     // If we are rank 0, set the number to -1 and send it to process 1
-    number = -1;
+    number = 23;
     MPI_Isend(&number, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &request);
     while (!done)
     {
@@ -35,6 +35,7 @@ int main(int argc, char** argv) {
   else if (world_rank == 1)
   {
     MPI_Recv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    printf("rank %d received int %d\n", world_rank, number);
   }
   MPI_Finalize();
 }
