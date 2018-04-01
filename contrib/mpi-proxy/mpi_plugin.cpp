@@ -469,7 +469,6 @@ MPI_Test(MPI_Request* request, int* flag, MPI_Status* status)
 int irecv_wait(MPI_Request* request, MPI_Status* status)
 {
   int retval = 0;
-  bool done = false;
   int flag = 0;
   // Simple Recv wait solution: Spin on MPI_Test
 
@@ -477,7 +476,7 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
   // we need to check the receive cache here to see if that has been
   // drained already
   Async_Message* message = g_async_messages[request];
-  while (!done)
+  while (!flag)
   {
     DMTCP_PLUGIN_DISABLE_CKPT();
 
@@ -486,23 +485,23 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
       memcpy(status, &message->status, sizeof(MPI_Status));
 
       // clean up our message queue
-      done = true;
+      flag = 1;
     }
     else // message has not been drained, do a test
     {
       Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
       Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, *request);
-      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
-      // TODO: handle other MPI_Status's
+      // FIXME: handle actual MPI_Status.  Defautl to IGNORE for now
+      // Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
 
       retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       if (retval == 0)
       {
         *request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
         flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                                status,
-                                sizeof(MPI_Status));
+        // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+        //                        status,
+        //                        sizeof(MPI_Status));
 
         if (flag == 1) // drain is ready!
         {
