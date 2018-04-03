@@ -853,6 +853,9 @@ static bool drain_packet()
   int flag = 0;
   int source = 0;
   int tag = 0;
+  int iprobe_status = 0;
+  int get_count_status = 0;
+  int receive_status = 0;
   MPI_Datatype datatype;
   MPI_Comm comm = MPI_COMM_WORLD; // FIXME - other comms?
   MPI_Status status;
@@ -865,17 +868,25 @@ static bool drain_packet()
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int) MPI_COMM_WORLD);
 
   // get probe resules
-  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-  flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
+  iprobe_status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  if (iprobe_status == 0)
+  {
+    flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+    // FIXME: actually handle a status
+    // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+    //                          &status,
+    //                          sizeof(MPI_Status));
+  }
+
   if (!flag)
     return false;
 
   // There's a packet waiting for us
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_count);
-  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_BYTE);
-  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+
+  get_count_status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
   count = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
 
   // Get Type_size info
@@ -898,8 +909,10 @@ static bool drain_packet()
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // Ignore FIXME
 
-  Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, size);
+  receive_status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+
+  if (receive_status == 0)
+    Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, buf, size);
 
   // copy all data into local message
   message = (Message *)malloc(sizeof(Message));
@@ -917,6 +930,7 @@ static bool drain_packet()
   // queue it
   g_message_queue.push_back(message);
   g_local_recv++;
+
   return true;
 }
 
@@ -1035,6 +1049,7 @@ resolve_async_messages()
   // unserviced irecv requests
   // std::map<MPI_Request, Async_Message*> g_async_messages;
 
+
   MPI_Request* request;
   Async_Message* message;
   std::map<MPI_Request*, Async_Message*>::iterator it;
@@ -1046,24 +1061,29 @@ resolve_async_messages()
     int flag = 0;
     request = it->first;
     message = it->second;
+    if (message->serviced)
+      continue;
+
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
     Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
+    // Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF); // STATUS_IGNORE
 
     retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // return value
     if (retval == MPI_SUCCESS)
     {
+      Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                              message->request,
+                              sizeof(MPI_Request));
       message->flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       // FIXME: handle actual MPI_Status
       // this will probably end up being MPI_STATUS_IGNORE
       // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
       //                        &message->status,
       //                        sizeof(MPI_Status));
-      if (flag)
+      if (message->flag)
       {
         // this information also needs to be cached for when the application
         // finally does its own MPI_Test or MPI_Wait on the given MPI_Request
-        message->flag = flag;
         message->serviced = true;
         if (message->type == IRECV_REQUEST)
         {
@@ -1073,6 +1093,7 @@ resolve_async_messages()
           Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                                   request,
                                   sizeof(MPI_Request));
+          g_local_recv++;
         }
       }
     } // TODO: retval = failure?
