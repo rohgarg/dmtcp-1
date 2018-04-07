@@ -24,6 +24,16 @@
 #include "protectedfds.h"
 
 // #define DEBUG
+__inline void dpf(const char * msg)
+{
+#ifdef DEBUG
+  printf("%d %s\n", g_world_rank, msg);
+  fflush(stdout);
+#else
+  (void) msg;
+#endif
+}
+
 
 int g_world_rank = 0;
 int g_world_size = 0;
@@ -121,6 +131,10 @@ int Send_Buf_To_Proxy(int connfd, const void* buf, int size)
 int exec_proxy_cmd(int pcmd)
 {
   int answer = 0;
+  // FIXME: We must handle the case where someone Finalizes before a checkpoint
+  // this causes a blocking condition.  For now we'll simply introduce a sleep
+  // into our test cases in order to bypass this, but this will be a blocker
+  // in the future
   JTRACE("PLUGIN: Sending Proxy Command");
   if (write(PROTECTED_MPI_PROXY_FD, &pcmd, 4) < 0) {
     JNOTE("ERROR WRITING TO SOCKET")(JASSERT_ERRNO);

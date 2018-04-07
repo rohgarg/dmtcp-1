@@ -280,6 +280,11 @@ void MPIProxy_Test(int connfd)
     g_hanging_irecv.erase(request_copy);
     g_hanging_irecv_size.erase(request_copy);
   }
+  else
+  {
+    // it was an isend
+    g_hanging_isend.erase(request_copy);
+  }
 }
 
 void MPIProxy_Recv(int connfd)
