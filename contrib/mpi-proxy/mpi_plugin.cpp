@@ -77,7 +77,7 @@ int Receive_Int_From_Proxy(int connfd)
     return retval;
 }
 
-int Complete_Blocking_Call_Safely(int connfd)
+int Complete_Blocking_Call_Safely(int connfd, bool* g_pending)
 {
   int flags = 0;
   int status = EWOULDBLOCK;
@@ -94,6 +94,8 @@ int Complete_Blocking_Call_Safely(int connfd)
     fcntl(connfd, F_SETFL, flags | O_NONBLOCK);
     status = read(connfd, &retval, sizeof(int));
     fcntl(connfd, F_SETFL, flags);
+    if (status != EWOULDBLOCK)
+      *g_pending = false;
     DMTCP_PLUGIN_ENABLE_CKPT();
   }
 
@@ -357,7 +359,8 @@ MPI_Send(const void *buf, int count, MPI_Datatype datatype, int dest, int tag,
   // Block *safely* until we receive the status back
   // this _Safely call handles the situation where a ckpt/restart
   // occurs during the process of waiting for the Recv to occur
-  status = Complete_Blocking_Call_Safely(PROTECTED_MPI_PROXY_FD);
+  status = Complete_Blocking_Call_Safely(PROTECTED_MPI_PROXY_FD,
+                                          &g_pending_send);
 
   return status;
 }
@@ -785,6 +788,7 @@ MPI_Irecv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
     // copy stuff
     // set to serviced
     message->serviced = true;
+    message->flag = 1;
     *message->request = DRAINED_REQUEST_VALUE;
     mpi_plugin_return_buffered_packet(buf,
                                       count,
@@ -1073,10 +1077,6 @@ complete_blocking_call()
 static void
 resolve_async_messages()
 {
-  // unserviced irecv requests
-  // std::map<MPI_Request, Async_Message*> g_async_messages;
-
-
   MPI_Request* request;
   Async_Message* message;
   std::map<MPI_Request*, Async_Message*>::iterator it;
@@ -1088,6 +1088,7 @@ resolve_async_messages()
     int flag = 0;
     request = it->first;
     message = it->second;
+
     if (message->serviced)
       continue;
 
@@ -1117,10 +1118,8 @@ resolve_async_messages()
           Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                                   message->recvbuf,
                                   message->size);
-          Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                                  request,
-                                  sizeof(MPI_Request));
           g_local_recv++;
+          g_world_recv++;
         }
       }
     } // TODO: retval = failure?
