@@ -26,6 +26,7 @@ int main(int argc, char** argv) {
   if (world_rank == 0) {
     // If we are rank 0, set the number to -1 and send it to process 1
     number = 26;
+    sleep(5);
     MPI_Send(&number, 1, MPI_INT, 1, 0, MPI_COMM_WORLD);
   } else if (world_rank == 1) {
     MPI_Irecv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &request);

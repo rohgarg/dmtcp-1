@@ -1152,13 +1152,68 @@ pre_ckpt_drain_data_from_proxy()
   g_local_recv = 0;
 }
 
+static void
+pre_restart_replay()
+{
+  MPI_Request* request;
+  Async_Message* message;
+  std::map<MPI_Request*, Async_Message*>::iterator it;
+
+  for (it = g_async_messages.begin(); it != g_async_messages.end(); it++)
+  {
+    MPI_Status status;
+    int retval = 0;
+    int flag = 0;
+    request = it->first;
+    message = it->second;
+
+    if (message->serviced)
+      continue;
+
+    if (message->type == IRECV_REQUEST)
+    {
+      // Queue up the request
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Irecv);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, message->count);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)message->datatype);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, message->remote_node);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, message->tag);
+      {
+        // FIXME: Translate MPI_Comm's
+        // Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)message->comm);
+        Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_COMM_WORLD);
+      }
+      Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
+
+      // Get the new MPI_Request handle and overwrite the old one
+      retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+      if (retval == 0)
+      {
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, message->request,
+                                sizeof(MPI_Request));
+      }
+      else // MASSIVE ERROR - need to die
+      {
+        exit(1);
+      }
+    }
+    else // TODO: others?
+    {
+      continue;
+    }
+  }
+  return;
+}
+
 static DmtcpBarrier mpiPluginBarriers[] = {
   { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_register_data,
     "Drain-Data-From-Proxy" },
   { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_drain_data_from_proxy,
     "Drain-Data-From-Proxy" },
   { DMTCP_GLOBAL_BARRIER_PRE_CKPT, pre_ckpt_update_ckpt_dir,
-    "update-ckpt-dir-by-rank" }
+    "update-ckpt-dir-by-rank" },
+  { DMTCP_GLOBAL_BARRIER_RESTART, pre_restart_replay,
+    "replay-async-receives" },
 };
 
 DmtcpPluginDescriptor_t mpi_plugin = {
