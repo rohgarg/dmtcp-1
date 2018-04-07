@@ -425,7 +425,8 @@ MPI_Test(MPI_Request* request, int* flag, MPI_Status* status)
   if (message->serviced) // cached result)
   {
     // if cached, buffer should already be populated on drain
-    memcpy(status, &message->status, sizeof(MPI_Status));
+    // TODO: Actually handle MPI_Status
+    // memcpy(status, &message->status, sizeof(MPI_Status));
     *flag = message->flag;
   }
   else // not serviced during checkpoint/restart - check for result on proxy
