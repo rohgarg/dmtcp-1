@@ -26,15 +26,13 @@ int main(int argc, char** argv) {
   if (world_rank == 0) {
     // If we are rank 0, set the number to -1 and send it to process 1
     number = 27;
-    MPI_Isend(&number, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &request);
     sleep(5);
+    MPI_Isend(&number, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &request);
     MPI_Wait(&request, MPI_STATUS_IGNORE);
-    printf("done waiting\n");
-    fflush(stdout);
   } else if (world_rank == 1) {
+    sleep(5);
     MPI_Irecv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, &request);
     MPI_Wait(&request, MPI_STATUS_IGNORE);
-    sleep(5);
     printf("Process 1 received number %d from process 0\n", number);
     fflush(stdout);
   }

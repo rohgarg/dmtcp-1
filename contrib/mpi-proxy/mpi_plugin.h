@@ -14,9 +14,9 @@ enum MPI_Plugin_Recv_Status
 
 enum MPI_Plugin_Request_Type
 {
-  ISEND_REQUEST,
-  IRECV_REQUEST,
-  DRAINED_EARLY,
+  ISEND_REQUEST = 0,
+  IRECV_REQUEST = 1,
+  DRAINED_EARLY = 2,
 };
 
 typedef struct Message

@@ -26,7 +26,7 @@
 int g_world_rank = 0;
 int g_world_size = 0;
 
-#define DEBUG
+// #define DEBUG
 void dpf(const char * msg)
 {
 #ifdef DEBUG
@@ -525,9 +525,9 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
           Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                                   message->recvbuf,
                                   message->size);
+          g_local_recv++;
         }
       }
-      sleep(1);
     }
     // give ourselves a moment to checkpoint while spinning
     DMTCP_PLUGIN_ENABLE_CKPT();
@@ -541,19 +541,30 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
   int retval = 0;
   int flags = 0;
   int sockstat = EWOULDBLOCK;
-  // Send Wait request
+  Async_Message* message = g_async_messages[request];
 
   DMTCP_PLUGIN_DISABLE_CKPT();
-  g_pending_wait = true;
-  g_restart_receive = false;
-  g_restart_retval = 0;
-  g_pending_wait_request = request;
-  g_pending_wait_status = status;
-  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Wait);
-  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
+  if (message->serviced)
+  {
+    // This Isend has already been serviced before the call to wait
+    // due to a checkpoint occuring
+    DMTCP_PLUGIN_ENABLE_CKPT();
+    return 0;
+  }
+  else
+  {
+    // Send Wait request
+    g_pending_wait = true;
+    g_restart_receive = false;
+    g_restart_retval = 0;
+    g_pending_wait_request = request;
+    g_pending_wait_status = status;
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Wait);
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, request, sizeof(MPI_Request));
 
-  // FIXME: handle actual MPI_Status value.  Default to STATUS_IGNORE for now
-  // Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, status, sizeof(MPI_Status));
+    // FIXME: handle actual MPI_Status value.  Default to STATUS_IGNORE for now
+    // Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, status, sizeof(MPI_Status));
+  }
   DMTCP_PLUGIN_ENABLE_CKPT();
 
   // We can induce a sleep here to for an in-flight Wait on an Isend
@@ -1075,9 +1086,10 @@ complete_blocking_call()
   }
 }
 
-static void
+static bool
 resolve_async_messages()
 {
+  int unserviced_isends = 0;
   MPI_Request* request;
   Async_Message* message;
   std::map<MPI_Request*, Async_Message*>::iterator it;
@@ -1122,22 +1134,45 @@ resolve_async_messages()
           g_local_recv++;
           g_world_recv++;
         }
+        else
+        {
+          dpf("serviced ISEND");
+        }
+      }
+      else
+      {
+        if (message->type == ISEND_REQUEST)
+        {
+          dpf("unserivced ISEND");
+          unserviced_isends++;
+        }
+        else
+        {
+          dpf("unserviced IRECV");
+        }
       }
     } // TODO: retval = failure?
+    else
+    {
+      printf("MPI call failed? %d message type\n", message->type);
+      fflush(stdout);
+    }
   }
+  return unserviced_isends != 0;
 }
 
 static void
 pre_ckpt_drain_data_from_proxy()
 {
+  bool unserviced_isends = true;
   get_packets_sent();
   get_packets_recv();
 
   complete_blocking_call();
 
-  while (g_world_sent != g_world_recv)
+  while (g_world_sent != g_world_recv || unserviced_isends)
   {
-    resolve_async_messages();
+    unserviced_isends = resolve_async_messages();
     drain_packet();
     // we have to call this every time to get up to date numbers
     // of all the proxies, since we're not the only one waiting
