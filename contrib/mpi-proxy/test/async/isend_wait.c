@@ -28,9 +28,12 @@ int main(int argc, char** argv) {
     number = 24;
     MPI_Isend(&number, 1, MPI_INT, 1, 0, MPI_COMM_WORLD, &request);
     MPI_Wait(&request, MPI_STATUS_IGNORE);
+    sleep(4);
   } else if (world_rank == 1) {
     MPI_Recv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+    sleep(4);
     printf("Process 1 received number %d from process 0\n", number);
+    fflush(stdout);
   }
   MPI_Finalize();
 }

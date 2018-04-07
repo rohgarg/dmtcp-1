@@ -23,8 +23,11 @@
 #include "jfilesystem.h"
 #include "protectedfds.h"
 
-// #define DEBUG
-__inline void dpf(const char * msg)
+int g_world_rank = 0;
+int g_world_size = 0;
+
+#define DEBUG
+void dpf(const char * msg)
 {
 #ifdef DEBUG
   printf("%d %s\n", g_world_rank, msg);
@@ -33,10 +36,6 @@ __inline void dpf(const char * msg)
   (void) msg;
 #endif
 }
-
-
-int g_world_rank = 0;
-int g_world_size = 0;
 
 // this is the global and local send/recv counts that will be used
 // in order to determine whether the network has been succesfully
@@ -553,6 +552,10 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
   // Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, status, sizeof(MPI_Status));
   DMTCP_PLUGIN_ENABLE_CKPT();
 
+  // We can induce a sleep here to for an in-flight Wait on an Isend
+  // for testing Checkpoint/Restart
+  // sleep(4);
+
   // Block *safely* until we receive the status back
   // handle the ckpt/restart case during this blocking call gracefully
   while (sockstat == EWOULDBLOCK && !g_restart_receive)
@@ -578,6 +581,7 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
       // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
       //                        status,
       //                        sizeof(MPI_Status));
+      g_pending_wait = false;
     }
     DMTCP_PLUGIN_ENABLE_CKPT();
   }
@@ -724,7 +728,12 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
                                   sizeof(MPI_Status));
       }
       done = true;
+      g_local_recv++;
       g_world_recv++;
+    }
+    else
+    {
+      // nothing to do if no packets waiting?
     }
     // no packet waiting, allow a moment to sleep in case we need to checkpoint
     DMTCP_PLUGIN_ENABLE_CKPT();
@@ -888,9 +897,9 @@ static bool drain_packet()
   {
     flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
     // FIXME: actually handle a status
-    // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-    //                          &status,
-    //                          sizeof(MPI_Status));
+    Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                              &status,
+                              sizeof(MPI_Status));
   }
 
   if (!flag)
@@ -898,10 +907,13 @@ static bool drain_packet()
 
   // There's a packet waiting for us
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Get_count);
+  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
   Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPI_BYTE);
 
   get_count_status = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
-  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, &status, sizeof(MPI_Status));
+  // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+  //                          &status,
+  //                          sizeof(MPI_Status));
   count = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
 
   // Get Type_size info
@@ -1052,8 +1064,8 @@ complete_blocking_call()
     g_restart_receive = true;
     Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, g_pending_wait_request,
                             sizeof(MPI_Request));
-    Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, g_pending_wait_status,
-                            sizeof(MPI_Status));
+    //  Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD, g_pending_wait_status,
+    //                        sizeof(MPI_Status));
     g_pending_wait = false;
   }
 }

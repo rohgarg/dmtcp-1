@@ -34,7 +34,7 @@ std::map<MPI_Request, int> g_hanging_irecv_size;
 int serial_printf(const char * msg)
 {
 #ifdef DEBUG_PRINTS
-  printf("%s\n", msg);
+  printf("proxy %d - %s\n", g_commrank, msg);
   fflush(stdout);
 #endif
 }
@@ -292,7 +292,9 @@ void MPIProxy_Recv(int connfd)
   int status = 0;
   void * buf;
   int size = 0;
-  int count, source, tag;
+  int count = 0;
+  int source = 0;
+  int tag = 0;
   MPI_Datatype datatype;
   MPI_Comm comm;
   int mpi_status_arg;
@@ -410,7 +412,7 @@ void MPIProxy_Iprobe(int connfd)
   if (status == MPI_SUCCESS)
   {
     MPIProxy_Send_Arg_Int(connfd, flag);
-    // MPIProxy_Send_Arg_Buf(connfd, &mpi_status, sizeof(mpi_status));
+    MPIProxy_Send_Arg_Buf(connfd, &mpi_status, sizeof(mpi_status));
     // FIXME: handle actual status
   }
 }
@@ -423,12 +425,13 @@ void MPIProxy_Get_count(int connfd)
   MPI_Datatype datatype;
 
   // Get the MPI_Status and Datatype
+  MPIProxy_Receive_Arg_Buf(connfd, &status, sizeof(MPI_Status));
   datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
 
   // Do the Get_count
   retval = MPI_Get_count(&status, datatype, &count);
   MPIProxy_Return_Answer(connfd, retval);
-  MPIProxy_Send_Arg_Buf(connfd, &status, sizeof(MPI_Status));
+  // MPIProxy_Send_Arg_Buf(connfd, &status, sizeof(MPI_Status));
   MPIProxy_Send_Arg_Int(connfd, count);
 }
 

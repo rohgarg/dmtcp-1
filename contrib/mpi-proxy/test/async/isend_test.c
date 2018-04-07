@@ -32,6 +32,7 @@ int main(int argc, char** argv) {
     {
       MPI_Test(&request, &done, MPI_STATUS_IGNORE);
     }
+    sleep(5);
   }
   else if (world_rank == 1)
   {
@@ -40,6 +41,5 @@ int main(int argc, char** argv) {
     printf("rank %d received int %d\n", world_rank, number);
     fflush(stdout);
   }
-  sleep(5);
   MPI_Finalize();
 }
