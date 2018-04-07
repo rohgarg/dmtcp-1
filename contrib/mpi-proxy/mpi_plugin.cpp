@@ -499,22 +499,22 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
 
     if (message->serviced) // message has been drained
     {
-      memcpy(status, &message->status, sizeof(MPI_Status));
-
+      if (status != MPI_STATUS_IGNORE)
+        memcpy(status, &message->status, sizeof(MPI_Status));
       // clean up our message queue
       flag = 1;
     }
     else // message has not been drained, do a test
     {
       Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Test);
-      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, *request);
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, *message->request);
       // FIXME: handle actual MPI_Status.  Defautl to IGNORE for now
       // Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
 
       retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       if (retval == 0)
       {
-        *request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
+        *message->request = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
         flag = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
         // Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
         //                        status,
@@ -527,6 +527,7 @@ int irecv_wait(MPI_Request* request, MPI_Status* status)
                                   message->size);
         }
       }
+      sleep(1);
     }
     // give ourselves a moment to checkpoint while spinning
     DMTCP_PLUGIN_ENABLE_CKPT();

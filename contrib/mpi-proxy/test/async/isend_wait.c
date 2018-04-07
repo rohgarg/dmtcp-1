@@ -30,8 +30,8 @@ int main(int argc, char** argv) {
     MPI_Wait(&request, MPI_STATUS_IGNORE);
     sleep(4);
   } else if (world_rank == 1) {
+    sleep(5);
     MPI_Recv(&number, 1, MPI_INT, 0, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-    sleep(4);
     printf("Process 1 received number %d from process 0\n", number);
     fflush(stdout);
   }
