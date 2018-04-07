@@ -1,8 +1,8 @@
 // This test will be used to ensure MPI_Irecv and MPI_Test work together
-
 #include <mpi.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
 int main(int argc, char** argv) {
   // Initialize the MPI environment
