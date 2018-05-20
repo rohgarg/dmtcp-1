@@ -537,8 +537,14 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
 #endif
       for (int i = 1; i < argc; i++) {
         s.push_back(argv[i]);
+        serial_printf(argv[i]);
       }
-      execvp(s[0], &s[0]);
+      s.push_back(NULL); // This is necessary for exec
+      int ret = execvp(s[0], &s[0]);
+      if (ret < 0) {
+        perror("execvp failed");
+        exit(-1);
+      }
     } else if (strstr(argv[1], "dmtcp_restart")) {
       serial_printf("Restarting");
       // TODO: Select correct image from arglist, re-form arglist
