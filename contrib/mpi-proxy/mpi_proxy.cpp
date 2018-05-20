@@ -1,7 +1,12 @@
 /* CopyLeft Gregory Price (2017) */
 
+#include <dirent.h>
 #include <sys/wait.h>
 #include <sys/socket.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/syscall.h>
+#include <fcntl.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
 #include <stdio.h>
@@ -15,11 +20,10 @@
 #include <mpi.h>
 #include <map>
 #include <vector>
+#include <algorithm>
 
 #include "mpi_proxy.h"
 #include "protectedfds.h"
-#include "dmtcp.h"
-#include "util.h"
 
 // #define DEBUG_PRINTS
 
@@ -545,6 +549,60 @@ isCkptImage(const char *s, int rank = 0)
   return false;
 }
 
+// Copied from DMTCP jalib
+static std::vector<int>
+listOpenFds()
+{
+  int fd = open("/proc/self/fd", O_RDONLY | O_NDELAY |
+                       O_LARGEFILE | O_DIRECTORY, 0);
+
+  const size_t allocation = (4 * BUFSIZ < sizeof(struct dirent64)
+                             ? sizeof(struct dirent64) : 4 * BUFSIZ);
+  char *buf = (char *)malloc(allocation);
+
+  std::vector<int> fdVec;
+
+  while (true) {
+    int nread = syscall(SYS_getdents, fd, buf, allocation);
+    if (nread == 0) {
+      break;
+    }
+    for (int pos = 0; pos < nread;) {
+      struct linux_dirent *d = (struct linux_dirent *)(&buf[pos]);
+      if (d->d_ino > 0) {
+        char *ch;
+        int fdnum = strtol(d->d_name, &ch, 10);
+        if (*ch == 0 && fdnum >= 0 && fdnum != fd) {
+          fdVec.push_back(fdnum);
+        }
+      }
+      pos += d->d_reclen;
+    }
+  }
+
+  close(fd);
+
+  std::sort(fdVec.begin(), fdVec.end());
+  free(buf);
+  return fdVec;
+}
+
+static void
+setCloseOnExec()
+{
+  std::vector<int> fds = listOpenFds();
+  for (size_t i = 0; i < fds.size(); ++i) {
+    int fd = fds[i];
+    if (DMTCP_IS_PROTECTED_FD(fd) || fd <= 2) {
+      continue;
+    }
+    int ret = fcntl(fd, F_SETFD, FD_CLOEXEC);
+    if (ret < 0) {
+      perror("fcntl");
+    }
+  }
+}
+
 void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
 {
   int i = 0;
@@ -565,6 +623,7 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
         serial_printf(argv[i]);
       }
       s.push_back(NULL); // This is necessary for exec
+      setCloseOnExec();
       int ret = execvp(s[0], &s[0]);
       if (ret < 0) {
         perror("execvp failed");
@@ -593,6 +652,7 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
       }
       s.push_back(argv[imgidx + rank]);
       s.push_back(NULL); // This is necessary for exec
+      setCloseOnExec();
       int ret = execvp(s[0], &s[0]);
       if (ret < 0) {
         perror("execvp failed");
