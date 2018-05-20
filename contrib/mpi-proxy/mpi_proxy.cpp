@@ -520,6 +520,31 @@ DONE:
   return;
 }
 
+// Copied from DMTCP utils
+static bool
+strEndsWith(const char *str, const char *pattern)
+{
+  if (str == NULL || pattern == NULL) {
+    return false;
+  }
+  int len1 = strlen(str);
+  int len2 = strlen(pattern);
+  if (len1 >= len2) {
+    size_t idx = len1 - len2;
+    return strncmp(str + idx, pattern, len2) == 0;
+  }
+  return false;
+}
+
+static bool
+isCkptImage(const char *s, int rank = 0)
+{
+  if (strEndsWith(s, ".dmtcp")) {
+    return true;
+  }
+  return false;
+}
+
 void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
 {
   int i = 0;
@@ -548,6 +573,7 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
     } else if (strstr(argv[1], "dmtcp_restart")) {
       serial_printf("Restarting");
       // TODO: Select correct image from arglist, re-form arglist
+#if 0
       char * newargv[5] = {NULL, NULL, NULL, NULL, NULL};
       newargv[0] = argv[1];
       newargv[1] = argv[2];
@@ -555,6 +581,24 @@ void launch_or_restart(pid_t pid, int rank, int argc, char *argv[])
       // newargv[2] = argv[3];
       // newargv[3] = argv[4+rank];
       execvp(newargv[0], (char* const*) &newargv);
+#else
+      std::vector<char*> s;
+      int imgidx = 0;
+      for (int i = 1; i < argc; i++) {
+        if (isCkptImage(argv[i], rank)) {
+          imgidx = i;
+          break;
+        }
+        s.push_back(argv[i]);
+      }
+      s.push_back(argv[imgidx + rank]);
+      s.push_back(NULL); // This is necessary for exec
+      int ret = execvp(s[0], &s[0]);
+      if (ret < 0) {
+        perror("execvp failed");
+        exit(-1);
+      }
+#endif
     } else {
       printf("ERROR - NOT A LAUNCH OR RESUME\n");
     }
