@@ -214,7 +214,7 @@ void MPIProxy_Isend(int connfd)
   MPIProxy_Return_Answer(connfd, retval);
   MPIProxy_Send_Arg_Buf(connfd, &request, sizeof(MPI_Request));
 }
-
+// int MPI_Wait(MPI_Request *request, MPI_Status *status)
 void MPIProxy_Wait(int connfd)
 {
   int retval = 0;
@@ -290,6 +290,251 @@ void MPIProxy_Test(int connfd)
     g_hanging_isend.erase(request_copy);
   }
 }
+
+
+//  MPIProxy_Cmd_Bcast = 15,
+//  MPIProxy_Cmd_Abort = 16,
+//  MPIProxy_Cmd_Barrier = 17,
+//  MPIProxy_Cmd_Reduce = 18,
+//  MPIProxy_Cmd_AllReduce = 19,
+//  MPIProxy_Cmd_AlltoAll = 20,
+//  MPIProxy_Cmd_AlltoAllv = 21,
+//  MPIProxy_Cmd_Comm_Split = 22,
+
+// int
+// MPI_Bcast(void *buffer, int count, MPI_Datatype datatype,
+//          int root, MPI_Comm comm)
+void MPIProxy_Bcast(int connfd)
+{
+  int retval = 0;
+  // void * buf = NULL;
+  int size = 0;
+  int count;
+  int root;
+  MPI_Datatype datatype;
+  MPI_Comm comm;
+  void * send_buf = NULL;
+
+  // Collect the arguments
+  size = MPIProxy_Receive_Arg_Int(connfd);
+
+  // Buffer read
+  send_buf = malloc(size);
+  MPIProxy_Receive_Arg_Buf(connfd, send_buf, size);
+
+  // rest of the arguments
+  count = MPIProxy_Receive_Arg_Int(connfd);
+  datatype = (MPI_Datatype) MPIProxy_Receive_Arg_Int(connfd);
+  root = MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  // Do the send
+  retval = MPI_Bcast(send_buf, count, datatype, root, comm);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - BCAST FAILED\n");
+    fflush(stdout);
+  }
+
+  free(send_buf);
+  MPIProxy_Return_Answer(connfd, retval);
+}
+
+// int
+// MPI_Abort(MPI_Comm comm, int errorcode)
+void MPIProxy_Abort(int connfd)
+{
+  int retval = 0;
+  int errcode;
+  MPI_Comm comm;
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  errcode = MPIProxy_Receive_Arg_Int(connfd);
+  // Do the send
+  retval = MPI_Abort(comm, errcode);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - ABORT FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+}
+
+// int
+// MPI_Barrier(MPI_Comm comm)
+void MPIProxy_Barrier(int connfd)
+{
+  int retval = 0;
+  MPI_Comm comm;
+
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  // Do the send
+  retval = MPI_Barrier(comm);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - BARRIER FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+}
+
+// int
+// MPI_Reduce(const void *sendbuf, void *recvbuf, int count,
+//           MPI_Datatype datatype, MPI_Op op, int root, MPI_Comm comm)
+void MPIProxy_Reduce(int connfd)
+{
+  int retval = 0;
+  int size;
+  int count;
+  MPI_Datatype datatype;
+  MPI_Op op;
+  int root;
+  MPI_Comm comm;
+  char *send_buf = NULL;
+  char *recv_buf = NULL;
+
+  size = MPIProxy_Receive_Arg_Int(connfd);
+  recv_buf = (char*)malloc(size);
+
+  // Buffer read
+  send_buf = (char*)malloc(size);
+  MPIProxy_Receive_Arg_Buf(connfd, send_buf, size);
+
+  count = MPIProxy_Receive_Arg_Int(connfd);
+  datatype = (MPI_Datatype)MPIProxy_Receive_Arg_Int(connfd);
+  op = (MPI_Op)MPIProxy_Receive_Arg_Int(connfd);
+  root = MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  retval = MPI_Reduce(send_buf, recv_buf, count, datatype, op, root, comm);
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - REDUCE FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, recv_buf, size);
+}
+
+// int
+// MPI_Allreduce(const void *sendbuf, void *recvbuf, int count,
+//           MPI_Datatype datatype, MPI_Op op, MPI_Comm comm)
+void MPIProxy_Allreduce(int connfd)
+{
+  int retval = 0;
+  int size;
+  int count;
+  MPI_Datatype datatype;
+  MPI_Op op;
+  MPI_Comm comm;
+  char *send_buf = NULL;
+  char *recv_buf = NULL;
+
+  size = MPIProxy_Receive_Arg_Int(connfd);
+  recv_buf = (char*)malloc(size);
+
+  // Buffer read
+  send_buf = (char*)malloc(size);
+  MPIProxy_Receive_Arg_Buf(connfd, send_buf, size);
+
+  count = MPIProxy_Receive_Arg_Int(connfd);
+  datatype = (MPI_Datatype)MPIProxy_Receive_Arg_Int(connfd);
+  op = (MPI_Op)MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  retval = MPI_Allreduce(send_buf, recv_buf, count, datatype, op, comm);
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - REDUCE FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  // Send the result to all the nodes
+  // TODO: Correct it
+  MPIProxy_Send_Arg_Buf(connfd, recv_buf, size);
+}
+
+// int
+// MPI_Alltoall(const void *sendbuf, int sendcount,
+//    MPI_Datatype sendtype, void *recvbuf, int recvcount,
+//    MPI_Datatype recvtype, MPI_Comm comm)
+void MPIProxy_Alltoall(int connfd)
+{
+  int retval = 0;
+  int sendsize = 0;
+  int recvsize = 0;
+  int sendcount, recvcount;
+  MPI_Datatype sendtype;
+  MPI_Datatype recvtype;
+  MPI_Op op;
+  MPI_Comm comm;
+  char *send_buf = NULL;
+  char *recv_buf = NULL;
+
+  sendsize = MPIProxy_Receive_Arg_Int(connfd);
+  recvsize = MPIProxy_Receive_Arg_Int(connfd);
+
+  recv_buf = (char*)malloc(recvsize);
+
+  // Buffer read
+  send_buf = (char*)malloc(sendsize);
+  MPIProxy_Receive_Arg_Buf(connfd, send_buf, sendsize);
+
+  sendcount = MPIProxy_Receive_Arg_Int(connfd);
+  sendtype = (MPI_Datatype)MPIProxy_Receive_Arg_Int(connfd);
+  recvcount = MPIProxy_Receive_Arg_Int(connfd);
+  recvtype = (MPI_Datatype)MPIProxy_Receive_Arg_Int(connfd);
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+
+  retval = MPI_Alltoall(send_buf, sendcount, sendtype,
+                        recv_buf, recvcount, recvtype, comm);
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - REDUCE FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, recv_buf, recvsize);
+}
+
+// int
+// MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
+//              const int sdispls[], MPI_Datatype sendtype,
+//              void *recvbuf, const int recvcounts[],
+//              const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm)
+void MPIProxy_Alltoallv(int connfd)
+{
+  int retval = 0;
+  // TODO: Implement it
+}
+
+// int
+// MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
+void MPIProxy_Comm_split(int connfd)
+{
+  int retval = 0;
+  MPI_Comm comm;
+  int color;
+  int key;
+  MPI_Comm newcomm;
+
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  color = MPIProxy_Receive_Arg_Int(connfd);
+  key = MPIProxy_Receive_Arg_Int(connfd);
+
+  // Do the send
+  retval = MPI_Comm_split(comm, color, key, &newcomm);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - BARRIER FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, &newcomm, sizeof(newcomm));
+}
+
 
 void MPIProxy_Recv(int connfd)
 {
@@ -509,6 +754,38 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Finalize:
       serial_printf("PROXY(Finalize)");
       MPIProxy_Finalize(connfd);
+      break;
+    case MPIProxy_Cmd_Bcast:
+      serial_printf("PROXY(Bcast)");
+      MPIProxy_Bcast(connfd);
+      break;
+    case MPIProxy_Cmd_Abort:
+      serial_printf("PROXY(Abort)");
+      MPIProxy_Abort(connfd);
+      break;
+    case MPIProxy_Cmd_Barrier:
+      serial_printf("PROXY(Barrier)");
+      MPIProxy_Barrier(connfd);
+      break;
+    case MPIProxy_Cmd_Reduce:
+      serial_printf("PROXY(Reduce)");
+      MPIProxy_Reduce(connfd);
+      break;
+    case MPIProxy_Cmd_Allreduce:
+      serial_printf("PROXY(Allreduce)");
+      MPIProxy_Allreduce(connfd);
+      break;
+    case MPIProxy_Cmd_Alltoall:
+      serial_printf("PROXY(Alltoall)");
+      MPIProxy_Alltoall(connfd);
+      break;
+    case MPIProxy_Cmd_Alltoallv:
+      serial_printf("PROXY(Alltoallv)");
+      MPIProxy_Alltoallv(connfd);
+      break;
+    case MPIProxy_Cmd_Comm_split:
+      serial_printf("PROXY(Comm_split)");
+      MPIProxy_Comm_split(connfd);
       break;
     case MPIProxy_Cmd_Shutdown_Proxy:
       serial_printf("PROXY: Shutdown - ");

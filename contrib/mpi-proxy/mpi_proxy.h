@@ -19,6 +19,15 @@ enum MPI_Proxy_Commands
   MPIProxy_Cmd_Wait = 13,
   MPIProxy_Cmd_Test = 14,
 
+  MPIProxy_Cmd_Bcast = 15,
+  MPIProxy_Cmd_Abort = 16,
+  MPIProxy_Cmd_Barrier = 17,
+  MPIProxy_Cmd_Reduce = 18,
+  MPIProxy_Cmd_Allreduce = 19,
+  MPIProxy_Cmd_Alltoall = 20,
+  MPIProxy_Cmd_Alltoallv = 21,
+  MPIProxy_Cmd_Comm_split = 22,
+
   // Draining Commands
   MPIProxy_Drain_Irecv = 0x80000000,
 
