@@ -9,7 +9,7 @@ NAME=${shell basename $$PWD}
 LIBNAME=libdmtcp_${NAME}
 
 # As you add new files to your plugin library, add the object file names here.
-LIBOBJS = mpi_plugin.o
+LIBOBJS = mpi_plugin.o  mpi_unimplemented_wrappers.o
 
 # Modify if your DMTCP_ROOT is located elsewhere.
 ifndef DMTCP_ROOT
@@ -56,7 +56,7 @@ mpi_plugin.o: mpi_plugin.cpp
 	${CC} ${CFLAGS} -g3 -O0 -c -o $@ $<
 
 .cpp.o:
-	${CXX} ${CXXFLAGS} -g3 -O0 -c -o $@ $<
+	${MPICC} ${CXXFLAGS} -fPIC -fpermissive  -g3 -O0 -c -o $@ $<
 
 tidy:
 	rm -f *~ .*.swp dmtcp_restart_script*.sh ckpt_*.dmtcp
