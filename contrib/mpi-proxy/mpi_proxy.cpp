@@ -43,18 +43,70 @@ int serial_printf(const char * msg)
 #endif
 }
 
+// Fails or does entire write (returns count)
+static ssize_t
+writeAll(int fd, const void *buf, size_t count)
+{
+  const char *ptr = (const char *)buf;
+  size_t num_written = 0;
+
+  do {
+    ssize_t rc = write(fd, ptr + num_written, count - num_written);
+    if (rc == -1) {
+      if (errno == EINTR || errno == EAGAIN) {
+        continue;
+      } else {
+        return rc;
+      }
+    } else if (rc == 0) {
+      break;
+    } else { // else rc > 0
+      num_written += rc;
+    }
+  } while (num_written < count);
+  return num_written;
+}
+
+// Fails, succeeds, or partial read due to EOF (returns num read)
+// return value:
+// -1: unrecoverable error
+// <n>: number of bytes read
+static ssize_t
+readAll(int fd, void *buf, size_t count)
+{
+  ssize_t rc;
+  char *ptr = (char *)buf;
+  size_t num_read = 0;
+
+  for (num_read = 0; num_read < count;) {
+    rc = read(fd, ptr + num_read, count - num_read);
+    if (rc == -1) {
+      if (errno == EINTR || errno == EAGAIN) {
+        continue;
+      } else {
+        return -1;
+      }
+    } else if (rc == 0) {
+      break;
+    } else { // else rc > 0
+      num_read += rc;
+    }
+  }
+  return num_read;
+}
+
 int MPIProxy_Receive_Arg_Int(int connfd)
 {
   int retval;
   int status;
-  status = read(connfd, &retval, sizeof(int));
+  status = readAll(connfd, &retval, sizeof(int));
   // TODO: error check
   return retval;
 }
 
 int MPIProxy_Send_Arg_Int(int connfd, int arg)
 {
-  int status = write(connfd, &arg, sizeof(int));
+  int status = writeAll(connfd, &arg, sizeof(int));
   // TODO: error check
   return status;
 }
@@ -63,13 +115,13 @@ int MPIProxy_Receive_Arg_Buf(int connfd, void *buf, int size)
 {
   int received = 0;
   while (received < size)
-    received += read(connfd, ((char *)buf)+received, size-received);
+    received += readAll(connfd, ((char *)buf)+received, size-received);
   return size == received;
 }
 
 int MPIProxy_Send_Arg_Buf(int connfd, void *buf, int size)
 {
-  int status = write(connfd, buf, size);
+  int status = writeAll(connfd, buf, size);
   // TODO: error check
   return status;
 }
@@ -80,7 +132,7 @@ void MPIProxy_Return_Answer(int connfd, int answer)
   printf("Returned %08x\n", answer);
   fflush(stdout);
 #endif
-  write(connfd, &answer, 4);
+  writeAll(connfd, &answer, 4);
   return;
 }
 
@@ -190,7 +242,7 @@ void MPIProxy_Isend(int connfd)
   // Buffer read
   buf = malloc(size);
   while (numread < size)
-    numread += read(connfd, ((char *)buf)+numread, size-numread);
+    numread += readAll(connfd, ((char *)buf)+numread, size-numread);
 
   // rest of the arguments
   count = MPIProxy_Receive_Arg_Int(connfd);
@@ -697,7 +749,7 @@ void proxy(int connfd)
   int cmd = 0;
   while (1) {
     cmd = 0;
-    int rc = read(connfd, &cmd, sizeof(cmd));
+    int rc = readAll(connfd, &cmd, sizeof(cmd));
     if (rc < 0) {
       perror("PROXY: read");
       continue;
@@ -1327,7 +1379,7 @@ int main(int argc, char *argv[])
     if (strstr(argv[1], "dmtcp_restart")) {
       MPI_Init(NULL, NULL);
       MPI_Comm_rank(MPI_COMM_WORLD, &rank);
-      write(debugPipe[0], &rank, sizeof(int));
+      writeAll(debugPipe[0], &rank, sizeof(int));
       // FIXME: wait a second to let child get the rank
       sleep(1);
     }
@@ -1338,7 +1390,7 @@ int main(int argc, char *argv[])
            PROTECTED_MPI_PROXY_FD);
     close(debugPipe[1]);
     if (strstr(argv[1], "dmtcp_restart")) {
-      read(PROTECTED_MPI_PROXY_FD, &restart_rank, sizeof(int));
+      readAll(PROTECTED_MPI_PROXY_FD, &restart_rank, sizeof(int));
       assert(restart_rank != -1);
     }
     launch_or_restart(pid, restart_rank, argc, argv);

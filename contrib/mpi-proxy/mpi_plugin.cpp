@@ -19,12 +19,15 @@
 #include "mpi_proxy.h"
 #include "config.h"
 #include "dmtcp.h"
+#include "util.h"
 #include "jassert.h"
 #include "jfilesystem.h"
 #include "protectedfds.h"
 
 int g_world_rank = 0;
 int g_world_size = 0;
+
+using namespace dmtcp;
 
 // #define DEBUG
 void dpf(const char * msg)
@@ -72,7 +75,7 @@ int Receive_Int_From_Proxy(int connfd)
 {
     int retval;
     int status;
-    status = read(connfd, &retval, sizeof(int));
+    status = Util::readAll(connfd, &retval, sizeof(int));
     // TODO: error check
     return retval;
 }
@@ -92,7 +95,7 @@ int Complete_Blocking_Call_Safely(int connfd, bool* g_pending)
     }
     flags = fcntl(connfd, F_GETFL, 0);
     fcntl(connfd, F_SETFL, flags | O_NONBLOCK);
-    status = read(connfd, &retval, sizeof(int));
+    status = Util::readAll(connfd, &retval, sizeof(int));
     fcntl(connfd, F_SETFL, flags);
     if (status != EWOULDBLOCK)
       *g_pending = false;
@@ -108,7 +111,7 @@ int Receive_Buf_From_Proxy(int connfd, void* buf, int size)
 {
   int received = 0;
   while (received != size)
-    received += read(connfd, ((char *)buf)+received, size-received);
+    received += Util::readAll(connfd, ((char *)buf)+received, size-received);
   // TODO: error check
   return size == received;
 }
@@ -116,7 +119,7 @@ int Receive_Buf_From_Proxy(int connfd, void* buf, int size)
 int Send_Int_To_Proxy(int connfd, int arg)
 {
     int status;
-    status = write(connfd, &arg, sizeof(int));
+    status = Util::writeAll(connfd, &arg, sizeof(int));
     // TODO: error check
     return status;
 }
@@ -124,7 +127,7 @@ int Send_Int_To_Proxy(int connfd, int arg)
 int Send_Buf_To_Proxy(int connfd, const void* buf, int size)
 {
     int status;
-    status = write(connfd, buf, size);
+    status = Util::writeAll(connfd, buf, size);
     // TODO: error check
     return status;
 }
@@ -137,12 +140,12 @@ int exec_proxy_cmd(int pcmd)
   // into our test cases in order to bypass this, but this will be a blocker
   // in the future
   JTRACE("PLUGIN: Sending Proxy Command");
-  if (write(PROTECTED_MPI_PROXY_FD, &pcmd, 4) < 0) {
+  if (Util::writeAll(PROTECTED_MPI_PROXY_FD, &pcmd, 4) < 0) {
     JNOTE("ERROR WRITING TO SOCKET")(JASSERT_ERRNO);
   }
 
   JTRACE("PLUGIN: Receiving Proxy Answer - ");
-  if (read(PROTECTED_MPI_PROXY_FD, &answer, 4) < 0) {
+  if (Util::readAll(PROTECTED_MPI_PROXY_FD, &answer, 4) < 0) {
     JTRACE("ERROR READING FROM SOCKET")(JASSERT_ERRNO);
   } else {
     JTRACE("Answer Received");
@@ -585,7 +588,7 @@ int isend_wait(MPI_Request* request, MPI_Status* status)
     }
     flags = fcntl(PROTECTED_MPI_PROXY_FD, F_GETFL, 0);
     fcntl(PROTECTED_MPI_PROXY_FD, F_SETFL, flags | O_NONBLOCK);
-    sockstat = read(PROTECTED_MPI_PROXY_FD, &retval, sizeof(int));
+    sockstat = Util::readAll(PROTECTED_MPI_PROXY_FD, &retval, sizeof(int));
     fcntl(PROTECTED_MPI_PROXY_FD, F_SETFL, flags);
     if (sockstat != EWOULDBLOCK)
     {
