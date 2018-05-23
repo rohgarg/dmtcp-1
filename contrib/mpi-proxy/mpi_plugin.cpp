@@ -1030,19 +1030,17 @@ MPI_Alltoall(const void *sendbuf, int sendcount,
   return retval;
 }
 
-#if 0
 EXTERNC int
 MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
               const int sdispls[], MPI_Datatype sendtype,
-              void *recvbuf, int recvcounts[], const int rdispls[],
-              MPI_Datatype recvtype, MPI_Comm comm)
+              void *recvbuf, const int recvcounts[],
+              const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm)
 {
   int retval = 0;
   DMTCP_PLUGIN_DISABLE_CKPT();
   DMTCP_PLUGIN_ENABLE_CKPT();
   return retval;
 }
-#endif
 
 EXTERNC int
 MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
