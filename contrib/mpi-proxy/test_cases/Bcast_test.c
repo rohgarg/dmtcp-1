@@ -20,7 +20,7 @@ char *argv[];
     int buffer[4];
     int expected_output[4];
     MPI_Status status;
-    MPI_Request request
+    MPI_Request request;
 
     MPI_Init(&argc,&argv);
     MPI_Comm_size(MPI_COMM_WORLD,&numprocs);
