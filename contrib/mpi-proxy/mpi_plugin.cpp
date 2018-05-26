@@ -1010,18 +1010,21 @@ MPI_Alltoall(const void *sendbuf, int sendcount,
   int retval = 0;
   int sendsize = 0;
   int recvsize = 0;
+  int commsize = 0;
   int sendstatus = MPI_Type_size(sendtype, &sendsize);
   int recvstatus = MPI_Type_size(recvtype, &recvsize);
+  int comsstatus = MPI_Comm_size(comm, &commsize);
 
   DMTCP_PLUGIN_DISABLE_CKPT();
-  if (sendsize && recvsize) {
+  if (sendsize && recvsize && commsize) {
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Alltoall);
 
     // Buf part
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, sendcount * sendsize);
-    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, recvcount * recvsize);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, sendcount * sendsize * commsize);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, recvcount * recvsize * commsize);
 
-    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, sendbuf, sendcount * sendsize);
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, sendbuf,
+                      sendcount * sendsize * commsize);
 
     // rest of stuff
     Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, sendcount);
@@ -1032,8 +1035,8 @@ MPI_Alltoall(const void *sendbuf, int sendcount,
 
     retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
     JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
-                                    recvbuf, recvcount * recvsize)
-                                    == recvcount * recvsize)
+                                    recvbuf, recvcount * recvsize * commsize)
+                                    == recvcount * recvsize * commsize)
              (recvcount)(recvsize).Text("Received fewer bytes than expected");
   }
   DMTCP_PLUGIN_ENABLE_CKPT();
