@@ -600,7 +600,6 @@ void MPIProxy_Wtime(int connfd)
 
   // Do the send
   retval = MPI_Wtime();
-  printf("retval: %f\n", retval);
 
   MPIProxy_Send_Arg_Buf(connfd, &retval, sizeof(retval));
 }
