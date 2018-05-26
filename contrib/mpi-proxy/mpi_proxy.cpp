@@ -390,8 +390,9 @@ void MPIProxy_Bcast(int connfd)
     fflush(stdout);
   }
 
-  free(send_buf);
   MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, send_buf, size);
+  free(send_buf);
 }
 
 // int
@@ -507,6 +508,8 @@ void MPIProxy_Allreduce(int connfd)
   // Send the result to all the nodes
   // TODO: Correct it
   MPIProxy_Send_Arg_Buf(connfd, recv_buf, size);
+  free(recv_buf);
+  free(send_buf);
 }
 
 // int
