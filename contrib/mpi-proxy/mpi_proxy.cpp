@@ -17,7 +17,9 @@
 #include <assert.h>
 #include <sys/types.h>
 #include <sys/resource.h>
+#include <sys/prctl.h>
 #include <mpi.h>
+#include <errno.h>
 #include <map>
 #include <vector>
 #include <algorithm>
@@ -752,7 +754,7 @@ void proxy(int connfd)
     int rc = readAll(connfd, &cmd, sizeof(cmd));
     if (rc < 0) {
       perror("PROXY: read");
-      continue;
+      break; // perhaps the child died
     }
     switch (cmd) {
     case MPIProxy_Cmd_Init:
@@ -1393,6 +1395,12 @@ int main(int argc, char *argv[])
       readAll(PROTECTED_MPI_PROXY_FD, &restart_rank, sizeof(int));
       assert(restart_rank != -1);
     }
+    int r = prctl(PR_SET_PDEATHSIG, SIGTERM);
+    if (r == -1) { perror(0); exit(1); }
+    // test in case the original parent exited just
+    // before the prctl() call
+    if (getppid() == 1)
+      exit(1);
     launch_or_restart(pid, restart_rank, argc, argv);
   } else {
     assert(0);
