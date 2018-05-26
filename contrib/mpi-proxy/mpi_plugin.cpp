@@ -1077,6 +1077,22 @@ MPI_Comm_split(MPI_Comm comm, int color, int key, MPI_Comm *newcomm)
   return retval;
 }
 
+EXTERNC double
+MPI_Wtime(void)
+{
+  double retval = 0.0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Wtime);
+
+  JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                  &retval,
+                                  sizeof(retval)) == sizeof(retval))
+          (retval).Text("Received fewer bytes than expected");
+
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return retval;
+}
+
 static void
 pre_ckpt_update_ckpt_dir()
 {

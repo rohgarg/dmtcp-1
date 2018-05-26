@@ -592,6 +592,19 @@ void MPIProxy_Comm_split(int connfd)
   MPIProxy_Send_Arg_Buf(connfd, &newcomm, sizeof(newcomm));
 }
 
+// double
+// MPI_Wtime(void)
+void MPIProxy_Wtime(int connfd)
+{
+  double retval = 0.0;
+
+  // Do the send
+  retval = MPI_Wtime();
+  printf("retval: %f\n", retval);
+
+  MPIProxy_Send_Arg_Buf(connfd, &retval, sizeof(retval));
+}
+
 
 void MPIProxy_Recv(int connfd)
 {
@@ -848,6 +861,11 @@ void proxy(int connfd)
       serial_printf("PROXY: Shutdown - ");
       MPIProxy_Return_Answer(connfd, 0);
       goto DONE;
+
+    case MPIProxy_Cmd_Wtime:
+      serial_printf("PROXY(Wtime)");
+      MPIProxy_Wtime(connfd);
+      break;
 
     // Unimplemented Commands
     case MPIProxy_Cmd_Accumulate:
@@ -1214,7 +1232,6 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Win_unlock_all:
     case MPIProxy_Cmd_Win_wait:
     case MPIProxy_Cmd_Wtick:
-    case MPIProxy_Cmd_Wtime:
 
     default:
       NOT_IMPLEMENTED(cmd);
