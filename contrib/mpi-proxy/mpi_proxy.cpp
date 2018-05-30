@@ -753,6 +753,63 @@ void MPIProxy_Get_count(int connfd)
   MPIProxy_Send_Arg_Int(connfd, count);
 }
 
+// int MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
+void MPIProxy_Comm_dup(int connfd)
+{
+  int retval = 0;
+  MPI_Comm comm;
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  MPI_Comm newcomm;
+  // Do the send
+  retval = MPI_Comm_dup(comm, &newcomm);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - Comm_dup FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, &newcomm, sizeof(newcomm));
+}
+
+// int MPI_Comm_group(MPI_Comm comm, MPI_Group *group)
+void MPIProxy_Comm_group(int connfd)
+{
+  int retval;
+  MPI_Comm comm;
+  MPI_Group group;
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  retval = MPI_Comm_group(comm, &group);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - Comm_dup FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, &group, sizeof(group));
+}
+
+// int MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
+void MPIProxy_Comm_create(int connfd)
+{
+  int retval;
+  MPI_Comm comm;
+  MPI_Group group;
+  MPI_Comm newcomm;
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  MPIProxy_Receive_Arg_Buf(connfd, &group, sizeof(group));
+  retval = MPI_Comm_create(comm, group, &newcomm);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - Comm_dup FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, &newcomm, sizeof(newcomm));
+}
+
 void MPIProxy_Finalize(int connfd)
 {
   serial_printf("PROXY: MPI_Finalize - ");
@@ -856,15 +913,26 @@ void proxy(int connfd)
       serial_printf("PROXY(Comm_split)");
       MPIProxy_Comm_split(connfd);
       break;
-    case MPIProxy_Cmd_Shutdown_Proxy:
-      serial_printf("PROXY: Shutdown - ");
-      MPIProxy_Return_Answer(connfd, 0);
-      goto DONE;
-
     case MPIProxy_Cmd_Wtime:
       serial_printf("PROXY(Wtime)");
       MPIProxy_Wtime(connfd);
       break;
+    case MPIProxy_Cmd_Comm_dup:
+      serial_printf("PROXY(Comm_dup)");
+      MPIProxy_Comm_dup(connfd);
+      break;
+    case MPIProxy_Cmd_Comm_group:
+      serial_printf("PROXY(Comm_group)");
+      MPIProxy_Comm_group(connfd);
+      break;
+    case MPIProxy_Cmd_Comm_create:
+      serial_printf("PROXY(Comm_create)");
+      MPIProxy_Comm_create(connfd);
+      break;
+    case MPIProxy_Cmd_Shutdown_Proxy:
+      serial_printf("PROXY: Shutdown - ");
+      MPIProxy_Return_Answer(connfd, 0);
+      goto DONE;
 
     // Unimplemented Commands
     case MPIProxy_Cmd_Accumulate:
@@ -909,10 +977,8 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Comm_create_errhandler:
     case MPIProxy_Cmd_Comm_create_keyval:
     case MPIProxy_Cmd_Comm_create_group:
-    case MPIProxy_Cmd_Comm_create:
     case MPIProxy_Cmd_Comm_delete_attr:
     case MPIProxy_Cmd_Comm_disconnect:
-    case MPIProxy_Cmd_Comm_dup:
     case MPIProxy_Cmd_Comm_idup:
     case MPIProxy_Cmd_Comm_dup_with_info:
     case MPIProxy_Cmd_Comm_f2c:
@@ -927,7 +993,6 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Comm_get_info:
     case MPIProxy_Cmd_Comm_get_name:
     case MPIProxy_Cmd_Comm_get_parent:
-    case MPIProxy_Cmd_Comm_group:
     case MPIProxy_Cmd_Comm_join:
     case MPIProxy_Cmd_Comm_rank:
     case MPIProxy_Cmd_Comm_remote_group:

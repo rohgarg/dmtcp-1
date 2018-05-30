@@ -1,11 +1,11 @@
-MPICC=cc
-MPICXX=CC
-CFLAGS?=-dynamic -g3 -O0
-CXXFLAGS?=-dynamic -g3 -O0
+MPICC=mpicc
+MPICXX=mpic++
+CFLAGS?= -g3 -O0 -std=c99
+CXXFLAGS?= -g3 -O0 -std=c99
 
 TESTS=mpi_hello_world Abort_test Allreduce_test Alltoall_test \
       Alltoallv_test Barrier_test Bcast_test Comm_split_test Reduce_test \
-      send_recv send_recv_many ping_pong
+      send_recv send_recv_many ping_pong Comm_dup_test
 
 default: ${TESTS}
 	echo "Done!"

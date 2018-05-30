@@ -1093,6 +1093,63 @@ MPI_Wtime(void)
   return retval;
 }
 
+EXTERNC int
+MPI_Comm_dup(MPI_Comm comm, MPI_Comm *newcomm)
+{
+  int retval = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Comm_dup);
+
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+  retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+  JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                  newcomm,
+                                  sizeof(*newcomm)) == sizeof(*newcomm))
+          (*newcomm)
+          (sizeof(*newcomm)).Text("Received fewer bytes than expected");
+
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return retval;
+}
+
+EXTERNC int
+MPI_Comm_group(MPI_Comm comm, MPI_Group *group)
+{
+  int retval = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Comm_group);
+
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+  retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+  JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                  group,
+                                  sizeof(*group)) == sizeof(*group))
+          (*group)
+          (sizeof(*group)).Text("Received fewer bytes than expected");
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return retval;
+}
+
+EXTERNC int
+MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
+{
+  int retval = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Comm_create);
+
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, &group, sizeof(group));
+  retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+  JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                  newcomm,
+                                  sizeof(*newcomm)) == sizeof(*newcomm))
+          (*newcomm)
+          (sizeof(*newcomm)).Text("Received fewer bytes than expected");
+
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return retval;
+}
+
 static void
 pre_ckpt_update_ckpt_dir()
 {
