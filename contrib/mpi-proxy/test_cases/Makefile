@@ -5,7 +5,8 @@ CXXFLAGS?= -g3 -O0 -std=c99
 
 TESTS=mpi_hello_world Abort_test Allreduce_test Alltoall_test \
       Alltoallv_test Barrier_test Bcast_test Comm_split_test Reduce_test \
-      send_recv send_recv_many ping_pong Comm_dup_test Sendrecv_test
+      send_recv send_recv_many ping_pong Comm_dup_test Sendrecv_test \
+      Waitall_test
 
 default: ${TESTS}
 	echo "Done!"
