@@ -632,11 +632,7 @@ void MPIProxy_Recv(int connfd)
   }
   else
   {
-    // TODO: ????
-    // FIXME
-    printf("NOT IGNORE STATUS!!!\n");
-    fflush(stdout);
-    mpi_status = NULL;
+    mpi_status = (MPI_Status*)malloc(sizeof(*mpi_status));
   }
 
   // Do the receive
@@ -658,8 +654,8 @@ void MPIProxy_Recv(int connfd)
     // TODO: Check that mpi_status is correctly used here
     if (mpi_status != MPI_STATUS_IGNORE)
     {
-      printf("proxy returning not status ignore?!\n");
-      MPIProxy_Send_Arg_Buf(connfd, &mpi_status, sizeof(mpi_status));
+      MPIProxy_Send_Arg_Buf(connfd, mpi_status, sizeof(*mpi_status));
+      free(mpi_status);
     }
   }
 

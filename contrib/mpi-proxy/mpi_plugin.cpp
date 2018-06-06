@@ -735,8 +735,7 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
       if (status == MPI_STATUS_IGNORE)
         Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
       else
-        Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0x0); // FIXME
-        // actually handle something other than MPI_STATUS_IGNORE
+        Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0x0);
 
       retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD);
       if (retval == 0)
@@ -745,7 +744,7 @@ MPI_Recv(void *buf, int count, MPI_Datatype datatype, int source, int tag,
         if (status != MPI_STATUS_IGNORE)
           Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
                                   status,
-                                  sizeof(MPI_Status));
+                                  sizeof(*status));
       }
       done = true;
       g_local_recv++;
