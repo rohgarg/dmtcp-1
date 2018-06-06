@@ -362,7 +362,6 @@ NOT_IMPL(int MPI_Type_vector(int count, int blocklength, int stride, MPI_Datatyp
 NOT_IMPL(int MPI_Unpack(const void *inbuf, int insize, int *position, void *outbuf, int outcount, MPI_Datatype datatype, MPI_Comm comm))
 NOT_IMPL(int MPI_Unpublish_name(const char *service_name, MPI_Info info, const char *port_name))
 NOT_IMPL(int MPI_Unpack_external (const char datarep[], const void *inbuf, MPI_Aint insize, MPI_Aint *position, void *outbuf, int outcount, MPI_Datatype datatype))
-NOT_IMPL(int MPI_Waitall(int count, MPI_Request array_of_requests[], MPI_Status *array_of_statuses))
 NOT_IMPL(int MPI_Waitany(int count, MPI_Request array_of_requests[], int *index, MPI_Status *status))
 NOT_IMPL(int MPI_Waitsome(int incount, MPI_Request array_of_requests[], int *outcount, int array_of_indices[], MPI_Status array_of_statuses[]))
 NOT_IMPL(int MPI_Win_allocate(MPI_Aint size, int disp_unit, MPI_Info info, MPI_Comm comm, void *baseptr, MPI_Win *win))

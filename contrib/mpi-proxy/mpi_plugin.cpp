@@ -1144,7 +1144,31 @@ MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
                                   sizeof(*newcomm)) == sizeof(*newcomm))
           (*newcomm)
           (sizeof(*newcomm)).Text("Received fewer bytes than expected");
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return retval;
+}
 
+
+EXTERNC int
+MPI_Waitall(int count, MPI_Request array_of_requests[],
+            MPI_Status *array_of_statuses)
+{
+  int retval = 0;
+  DMTCP_PLUGIN_DISABLE_CKPT();
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Waitall);
+
+  Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, count);
+  Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, array_of_requests,
+                    count * sizeof(MPI_Request));
+
+  retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+  if (retval == 0)
+  {
+    JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                array_of_statuses, sizeof(MPI_Status) * count)
+                                == sizeof(MPI_Status) * count)
+         (count)(sizeof(MPI_Status)).Text("Received fewer bytes than expected");
+  }
   DMTCP_PLUGIN_ENABLE_CKPT();
   return retval;
 }

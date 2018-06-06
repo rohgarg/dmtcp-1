@@ -604,6 +604,30 @@ void MPIProxy_Wtime(int connfd)
   MPIProxy_Send_Arg_Buf(connfd, &retval, sizeof(retval));
 }
 
+// int MPI_Waitall(int count, MPI_Request array_of_requests[],
+//    MPI_Status *array_of_statuses)
+void MPIProxy_Waitall(int connfd)
+{
+  int retval = 0;
+  int count = 0;
+  count = MPIProxy_Receive_Arg_Int(connfd);
+  MPI_Status *array_of_statuses;
+  array_of_statuses = (MPI_Status*)malloc(count*sizeof(MPI_Status));
+  MPI_Request array_of_requests[count];
+  MPIProxy_Receive_Arg_Buf(connfd, array_of_requests,
+                           sizeof(MPI_Request) * count);
+  retval = MPI_Waitall(count, array_of_requests, array_of_statuses);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - Comm_dup FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  MPIProxy_Send_Arg_Buf(connfd, array_of_statuses, sizeof(MPI_Status)*count);
+  free(array_of_statuses);
+}
+
 
 void MPIProxy_Recv(int connfd)
 {
@@ -930,6 +954,11 @@ void proxy(int connfd)
       MPIProxy_Return_Answer(connfd, 0);
       goto DONE;
 
+    case MPIProxy_Cmd_Waitall:
+      serial_printf("PROXY(Waitall)");
+      MPIProxy_Waitall(connfd);
+      break;
+
     // Unimplemented Commands
     case MPIProxy_Cmd_Accumulate:
     case MPIProxy_Cmd_Add_error_class:
@@ -1249,7 +1278,6 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Unpack:
     case MPIProxy_Cmd_Unpublish_name:
     case MPIProxy_Cmd_Unpack_external :
-    case MPIProxy_Cmd_Waitall:
     case MPIProxy_Cmd_Waitany:
     case MPIProxy_Cmd_Waitsome:
     case MPIProxy_Cmd_Win_allocate:
