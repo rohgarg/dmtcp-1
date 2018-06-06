@@ -628,6 +628,71 @@ void MPIProxy_Waitall(int connfd)
   free(array_of_statuses);
 }
 
+// int MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+//    int dest, int sendtag, void *recvbuf, int recvcount,
+//    MPI_Datatype recvtype, int source, int recvtag,
+//    MPI_Comm comm, MPI_Status *status)
+void MPIProxy_Sendrecv(int connfd)
+{
+  int retval = 0;
+  MPI_Status *mpi_status;
+  int sendsize = 0;
+  int recvsize = 0;
+  int sendcount, recvcount;
+  int sendtag, recvtag;
+  int source, dest;
+  MPI_Datatype sendtype;
+  MPI_Datatype recvtype;
+  MPI_Comm comm;
+  char *send_buf = NULL;
+  char *recv_buf = NULL;
+
+  sendsize = MPIProxy_Receive_Arg_Int(connfd);
+  recvsize = MPIProxy_Receive_Arg_Int(connfd);
+
+  recv_buf = (char*)malloc(recvsize);
+
+  // Buffer read
+  send_buf = (char*)malloc(sendsize);
+  MPIProxy_Receive_Arg_Buf(connfd, send_buf, sendsize);
+
+  sendcount = MPIProxy_Receive_Arg_Int(connfd);
+  sendtype = (MPI_Datatype)MPIProxy_Receive_Arg_Int(connfd);
+  dest = MPIProxy_Receive_Arg_Int(connfd);
+  sendtag = MPIProxy_Receive_Arg_Int(connfd);
+
+  recvcount = MPIProxy_Receive_Arg_Int(connfd);
+  recvtype = (MPI_Datatype)MPIProxy_Receive_Arg_Int(connfd);
+  source = MPIProxy_Receive_Arg_Int(connfd);
+  recvtag = MPIProxy_Receive_Arg_Int(connfd);
+
+  comm = (MPI_Comm) MPIProxy_Receive_Arg_Int(connfd);
+  int mpi_status_arg = MPIProxy_Receive_Arg_Int(connfd);
+  if (mpi_status_arg == 0xFFFFFFFF) {
+    mpi_status = MPI_STATUS_IGNORE;
+  } else {
+    mpi_status = (MPI_Status*)malloc(sizeof(*mpi_status));
+  }
+
+  retval = MPI_Sendrecv(send_buf, sendcount, sendtype, dest, sendtag,
+                        recv_buf, recvcount, recvtype, source, recvtag,
+                        comm, mpi_status);
+
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - REDUCE FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  if (retval == MPI_SUCCESS) {
+    MPIProxy_Send_Arg_Buf(connfd, recv_buf, recvsize);
+    if (mpi_status != MPI_STATUS_IGNORE) {
+      MPIProxy_Send_Arg_Buf(connfd, mpi_status, sizeof(*mpi_status));
+      free(mpi_status);
+    }
+  }
+  free(recv_buf);
+}
 
 void MPIProxy_Recv(int connfd)
 {
@@ -959,6 +1024,11 @@ void proxy(int connfd)
       MPIProxy_Waitall(connfd);
       break;
 
+    case MPIProxy_Cmd_Sendrecv:
+      serial_printf("PROXY(Sendrecv)");
+      MPIProxy_Sendrecv(connfd);
+      break;
+
     // Unimplemented Commands
     case MPIProxy_Cmd_Accumulate:
     case MPIProxy_Cmd_Add_error_class:
@@ -1219,7 +1289,6 @@ void proxy(int connfd)
     case MPIProxy_Cmd_Scatterv:
     case MPIProxy_Cmd_Iscatterv:
     case MPIProxy_Cmd_Send_init:
-    case MPIProxy_Cmd_Sendrecv:
     case MPIProxy_Cmd_Sendrecv_replace:
     case MPIProxy_Cmd_Ssend_init:
     case MPIProxy_Cmd_Ssend:

@@ -1148,6 +1148,62 @@ MPI_Comm_create(MPI_Comm comm, MPI_Group group, MPI_Comm *newcomm)
   return retval;
 }
 
+EXTERNC int
+MPI_Sendrecv(const void *sendbuf, int sendcount, MPI_Datatype sendtype,
+             int dest, int sendtag, void *recvbuf, int recvcount,
+             MPI_Datatype recvtype, int source, int recvtag, MPI_Comm comm,
+             MPI_Status *status)
+{
+  int retval = 0;
+  int sendsize = 0;
+  int recvsize = 0;
+  int commsize = 0;
+  int sendstatus = MPI_Type_size(sendtype, &sendsize);
+  int recvstatus = MPI_Type_size(recvtype, &recvsize);
+  DMTCP_PLUGIN_DISABLE_CKPT();
+
+  if (sendsize && recvsize) {
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Sendrecv);
+
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, sendcount * sendsize);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, recvcount * recvsize);
+    // Buf part
+
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, sendbuf,
+                      sendcount * sendsize);
+
+    // rest of stuff
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, sendcount);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)sendtype);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, dest);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)sendtag);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, recvcount);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)recvtype);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, source);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)recvtag);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+    if (status == MPI_STATUS_IGNORE) {
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0xFFFFFFFF);
+    } else {
+      Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, 0x0);
+    }
+
+    retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+    if (retval == 0) {
+      JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                  recvbuf, recvcount * recvsize)
+                                  == recvcount * recvsize)
+           (recvcount)(recvsize).Text("Received fewer bytes than expected");
+
+      if (status != MPI_STATUS_IGNORE)
+        Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                                status,
+                                sizeof(MPI_Status));
+    }
+  }
+  DMTCP_PLUGIN_ENABLE_CKPT();
+  return retval;
+}
 
 EXTERNC int
 MPI_Waitall(int count, MPI_Request array_of_requests[],
