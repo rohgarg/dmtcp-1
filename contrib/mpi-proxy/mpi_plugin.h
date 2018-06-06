@@ -48,3 +48,13 @@ typedef struct Async_Message
   MPI_Request * request;
   int flag;
 } Async_Message;
+
+static inline int
+sum(const int *cnts, int len)
+{
+  int sum = 0;
+  for (int i = 0; i < len; i++) {
+    sum += cnts[i];
+  }
+  return sum;
+}

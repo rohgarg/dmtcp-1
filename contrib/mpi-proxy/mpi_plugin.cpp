@@ -1049,7 +1049,56 @@ MPI_Alltoallv(const void *sendbuf, const int sendcounts[],
               const int rdispls[], MPI_Datatype recvtype, MPI_Comm comm)
 {
   int retval = 0;
+  int sendsize = 0;
+  int recvsize = 0;
+  int commsize = 0;
+  int sendstatus = MPI_Type_size(sendtype, &sendsize);
+  int recvstatus = MPI_Type_size(recvtype, &recvsize);
+  int comsstatus = MPI_Comm_size(comm, &commsize);
+
   DMTCP_PLUGIN_DISABLE_CKPT();
+  if (sendsize && recvsize && commsize) {
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, MPIProxy_Cmd_Alltoallv);
+
+    // Buf part
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD,
+                      commsize * sizeof (sendcounts[0]));
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD,
+                      commsize * sizeof (recvcounts[0]));
+
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, sendcounts,
+                      commsize * sizeof (sendcounts[0]));
+
+    Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD, recvcounts,
+                      commsize * sizeof (recvcounts[0]));
+
+    int total_send = sum(sendcounts, commsize);
+    int total_recv = sum(recvcounts, commsize);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, total_send);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, total_recv);
+
+    // rest of stuff
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)sendtype);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)recvtype);
+    Send_Int_To_Proxy(PROTECTED_MPI_PROXY_FD, (int)comm);
+
+    for (int i = 0; i < commsize; i++) {
+      if (sendcounts[i] != 0) {
+        Send_Buf_To_Proxy(PROTECTED_MPI_PROXY_FD,
+                      (const void*)((uintptr_t)sendbuf + sendsize * sdispls[i]),
+                      sendsize * sendcounts[i]);
+      }
+    }
+
+    retval = Receive_Int_From_Proxy(PROTECTED_MPI_PROXY_FD); // status
+    for (int i = 0; i < commsize; i++) {
+      JWARNING(Receive_Buf_From_Proxy(PROTECTED_MPI_PROXY_FD,
+                            (void*)((uintptr_t)recvbuf + recvsize * rdispls[i]),
+                            recvsize * recvcounts[i]) ==
+                            recvsize * recvcounts[i])
+          (recvcounts[i])(recvsize).Text("Received fewer bytes than expected");
+    }
+  }
   DMTCP_PLUGIN_ENABLE_CKPT();
   return retval;
 }

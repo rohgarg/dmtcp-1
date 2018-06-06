@@ -524,7 +524,6 @@ void MPIProxy_Alltoall(int connfd)
   int sendcount, recvcount;
   MPI_Datatype sendtype;
   MPI_Datatype recvtype;
-  MPI_Op op;
   MPI_Comm comm;
   char *send_buf = NULL;
   char *recv_buf = NULL;
@@ -563,7 +562,74 @@ void MPIProxy_Alltoall(int connfd)
 void MPIProxy_Alltoallv(int connfd)
 {
   int retval = 0;
-  // TODO: Implement it
+  int sendsize = 0;
+  int recvsize = 0;
+  int *sendcounts = NULL;
+  int *sdispls = NULL;
+  int *recvcounts = NULL;
+  int *rdispls = NULL;
+
+  sendsize = MPIProxy_Receive_Arg_Int(connfd);
+  recvsize = MPIProxy_Receive_Arg_Int(connfd);
+
+  sendcounts = (int*)malloc(sendsize);
+  recvcounts = (int*)malloc(recvsize);
+  sdispls = (int*)malloc(sendsize);
+  rdispls = (int*)malloc(recvsize);
+
+  MPIProxy_Receive_Arg_Buf(connfd, sendcounts, sendsize);
+  MPIProxy_Receive_Arg_Buf(connfd, recvcounts, recvsize);
+
+  int total_send = MPIProxy_Receive_Arg_Int(connfd);
+  int total_recv = MPIProxy_Receive_Arg_Int(connfd);
+
+  int sendtype = MPIProxy_Receive_Arg_Int(connfd);
+  int recvtype = MPIProxy_Receive_Arg_Int(connfd);
+  MPI_Comm comm = (MPI_Comm)MPIProxy_Receive_Arg_Int(connfd);
+
+  int stypesize = 0, rtypesize = 0, commsize = 0;
+  int sendstatus = MPI_Type_size(sendtype, &stypesize);
+  int recvstatus = MPI_Type_size(recvtype, &rtypesize);
+  int comsstatus = MPI_Comm_size(comm, &commsize);
+
+  char *sendbuf = (char*)malloc(total_send * stypesize);
+  char *recvbuf = (char*)malloc(total_recv * rtypesize);
+
+  int sendacc = 0;
+  int recvacc = 0;
+  for (int i = 0; i < commsize; i++) {
+    sdispls[i] = sendacc;
+    sendacc += sendcounts[i];
+    rdispls[i] = recvacc;
+    recvacc += recvcounts[i];
+    if (sendcounts[i] != 0) {
+      MPIProxy_Receive_Arg_Buf(connfd,
+                           (void*)((uintptr_t)sendbuf + sdispls[i] * stypesize),
+                           stypesize * sendcounts[i]);
+    } else {
+      sendacc += 1;
+    }
+  }
+
+  retval = MPI_Alltoallv(sendbuf, sendcounts, sdispls, sendtype,
+                         recvbuf, recvcounts, rdispls, recvtype, comm);
+  if (retval != MPI_SUCCESS) {
+    printf("Proxy - ALLTOALLV FAILED\n");
+    fflush(stdout);
+  }
+
+  MPIProxy_Return_Answer(connfd, retval);
+  free(sendcounts);
+  free(sdispls);
+  free(sendbuf);
+  for (int i = 0; i < recvsize; i++) {
+    MPIProxy_Send_Arg_Buf(connfd,
+                          recvbuf + rtypesize * rdispls[i],
+                          rtypesize * recvcounts[i]);
+  }
+  free(rdispls);
+  free(recvcounts);
+  free(recvbuf);
 }
 
 // int
