@@ -619,7 +619,7 @@ void MPIProxy_Waitall(int connfd)
   retval = MPI_Waitall(count, array_of_requests, array_of_statuses);
 
   if (retval != MPI_SUCCESS) {
-    printf("Proxy - Comm_dup FAILED\n");
+    printf("Proxy - Waitall FAILED\n");
     fflush(stdout);
   }
 
@@ -679,7 +679,7 @@ void MPIProxy_Sendrecv(int connfd)
                         comm, mpi_status);
 
   if (retval != MPI_SUCCESS) {
-    printf("Proxy - REDUCE FAILED\n");
+    printf("Proxy - MPI_SendRecv FAILED\n");
     fflush(stdout);
   }
 
