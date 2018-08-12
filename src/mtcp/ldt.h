@@ -21,7 +21,8 @@
 #include <linux/version.h>
 
 // ARM is missing asm/ldt.h in Ubuntu 11.10 (Linux 3.0, glibc-2.13)
-#if defined(__arm__) || defined(__aarch64__)
+// RISC-V is missing asm/ldt.h in Fedora 28 (Linux 4.15, glibc-2.27)
+#if defined(__arm__) || defined(__aarch64__) || defined(__riscv)
 
 /* Structure passed to `modify_ldt', 'set_thread_area', and 'clone' calls.
    This seems to have been stable since the beginning of Linux 2.6  */
@@ -37,7 +38,7 @@ struct user_desc {
   unsigned int useable : 1;
   unsigned int empty : 25;  /* Some variations leave this out. */
 };
-#else // if defined(__arm__) || defined(__aarch64__)
+#else // if defined(__arm__) || defined(__aarch64__) || defined(__riscv)
 
 // Defines struct user_desc
 # include <asm/ldt.h>

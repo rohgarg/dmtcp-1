@@ -47,6 +47,10 @@
 # define RMB asm volatile ("dsb sy ; dmb sy" : : : "memory")
 # define WMB asm volatile ("dsb sy ; dmb sy" : : : "memory")
 # define IMB asm volatile ("isb" : : : "memory")
+#elif defined(__riscv)
+# define RMB // TODO
+# define WMB // TODO
+# define IMB // TODO
 #else // if defined(__i386__) || defined(__x86_64__)
 # error "instruction architecture not implemented"
 #endif // if defined(__i386__) || defined(__x86_64__)
