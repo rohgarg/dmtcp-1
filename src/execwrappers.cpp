@@ -20,7 +20,7 @@
  ****************************************************************************/
 
 #include <sys/syscall.h>
-#ifdef __aarch64__
+#if defined(__aarch64__)  || defined(__riscv)
 #define __ARCH_WANT_SYSCALL_DEPRECATED
 
 // SYS_fork is a deprecated kernel call in aarch64; in favor of SYS_clone?

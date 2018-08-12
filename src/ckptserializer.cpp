@@ -23,7 +23,7 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#ifdef __aarch64__
+#if defined(__aarch64__) || defined(__riscv)
 
 /* On aarch64, fork() is not implemented, in favor of clone().
  *   A true fork call would include CLONE_CHILD_SETTID and set the thread id
@@ -37,7 +37,7 @@
                 NULL)
 #else // ifdef __aarch64__
 # define _real_sys_fork() _real_syscall(SYS_fork)
-#endif // ifdef __aarch64__
+#endif // if defined(__aarch64__) || defined(__riscv)
 #include <fcntl.h>
 #include <signal.h>
 #include <unistd.h>
@@ -49,11 +49,11 @@
 #include "util.h"
 
 // aarch64 doesn't define SYS_pipe kernel call by default.
-#if defined(__aarch64__)
+#if defined(__aarch64__) || defined(__riscv)
 # define _real_pipe(a)         _real_syscall(SYS_pipe2, a, 0)
-#else // if defined(__aarch64__)
+#else // if defined(__aarch64__) || defined(__riscv)
 # define _real_pipe(a)         _real_syscall(SYS_pipe, a)
-#endif // if defined(__aarch64__)
+#endif // if defined(__aarch64__) || defined(__riscv)
 #define _real_waitpid(a, b, c) _real_syscall(SYS_wait4, a, b, c, NULL)
 
 using namespace dmtcp;

@@ -11,6 +11,8 @@ typedef unsigned short segreg_t;
 typedef unsigned int segreg_t;
 #elif defined(__aarch64__)
 typedef unsigned long int segreg_t;
+#elif defined(__riscv)
+typedef unsigned long int segreg_t;
 #endif // ifdef __i386__
 
 /* TLS segment registers used differently in i386 and x86_64. - Gene */
@@ -24,13 +26,15 @@ typedef unsigned long int segreg_t;
  *   ARM uses a register in coprocessor 15 as the thread-pointer (TLS Register)
  */
 # define TLSSEGREG fs
+#elif (__riscv)
+# define TLSSEGREG fs
 #endif // ifdef __i386__
 
-#if defined(__x86_64__) || defined(__aarch64__)
+#if defined(__x86_64__) || defined(__aarch64__) || defined(__riscv)
 # define MYINFO_GS_T unsigned long int
 #else // if defined(__x86_64__) || defined(__aarch64__)
 # define MYINFO_GS_T unsigned int
-#endif // if defined(__x86_64__) || defined(__aarch64__)
+#endif // if defined(__x86_64__) || defined(__aarch64__) || defined(__riscv)
 
 typedef struct _ThreadTLSInfo {
   segreg_t fs, gs;  // thread local storage pointers

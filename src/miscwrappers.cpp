@@ -42,7 +42,7 @@
         // __GLIBC_PREREQ(2,
 // 8)
 
-#ifdef __aarch64__
+#if defined(__aarch64__) || defined(__riscv)
 
 // We must support all deprecated syscalls in case the end user code uses it.
 # define __ARCH_WANT_SYSCALL_DEPRECATED
@@ -67,7 +67,7 @@
 # define SYS_inotify_init __NR_inotify_init
 # define SYS_signalfd     __NR_signalfd
 # define SYS_eventfd      __NR_eventfd
-#endif // ifdef __aarch64__
+#endif // if defined(__aarch64__) || defined(__riscv)
 
 using namespace dmtcp;
 
