@@ -32,13 +32,13 @@
 #include <sys/utsname.h>
 #include <unistd.h>
 
-#ifdef __aarch64__
+#if defined(__aarch64__) || defined(__riscv)
 
 // FIXME:  We should use SYS_getdents64, and not SYS_getdents for all arch's.
 // SYS_getdents not supported in aarch64.
 # undef SYS_getdents
 # define SYS_getdents       SYS_getdents64
-#endif // ifdef __aarch64__
+#endif // defined(__aarch64__) || defined(__riscv)
 
 #define DELETED_FILE_SUFFIX " (deleted)"
 
