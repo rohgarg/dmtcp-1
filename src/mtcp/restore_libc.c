@@ -349,6 +349,8 @@ get_tls_segreg(void)
                 : "=r" (tlssegreg));
 #elif defined(__aarch64__)
   asm volatile ("mrs  %0, tpidr_el0" : "=r" (tlssegreg));
+#elif defined(__riscv)
+  tlssegreg = (uintptr_t)READ_THREAD_POINTER();
 #endif /* ifdef __i386__ */
   return (uint64_t)tlssegreg;
 }
@@ -389,6 +391,9 @@ get_tls_base_addr()
   //   different values when invoked at different call sites in WSL.
   //   Probably, this is because Windows is also using the $fs register.
   return (void *)pthread_self();
+#endif
+#if defined(__riscv)
+  return (void *)THREAD_SELF;
 #endif
   return (void *)(*(unsigned long *)&(gdtentrytls.base_addr));
 }
@@ -497,6 +502,8 @@ TLSInfo_HaveThreadSysinfoOffset()
                   : "=r" (sysinfo));
 #elif defined(__aarch64__)
     asm volatile ("mrs     %0, tpidr_el0" : "=r" (sysinfo));
+#elif defined(__riscv)
+    sysinfo = THREAD_SELF;
 #else /* if defined(__i386__) || defined(__x86_64__) */
 # error "current architecture not supported"
 #endif /* if defined(__i386__) || defined(__x86_64__) */
@@ -521,6 +528,8 @@ TLSInfo_GetThreadSysinfo()
                 : "=r" (sysinfo));
 #elif defined(__aarch64__)
   asm volatile ("mrs     %0, tpidr_el0" : "=r" (sysinfo));
+#elif defined(__riscv)
+    sysinfo = THREAD_SELF;
 #else /* if defined(__i386__) || defined(__x86_64__) */
 # error "current architecture not supported"
 #endif /* if defined(__i386__) || defined(__x86_64__) */
@@ -537,6 +546,8 @@ TLSInfo_SetThreadSysinfo(void *sysinfo)
   mtcp_sys_kernel_set_tls(sysinfo);
 #elif defined(__aarch64__)
   asm volatile ("msr     tpidr_el0, %[gs]" : :[gs] "r" (sysinfo));
+#elif defined(__riscv)
+  __thread_self = sysinfo;
 #else /* if defined(__i386__) || defined(__x86_64__) */
 # error "current architecture not supported"
 #endif /* if defined(__i386__) || defined(__x86_64__) */

@@ -114,4 +114,47 @@ int arch_prctl();
      asm volatile ("msr     tpidr_el0, %[gs]" : :[gs] "r" (myinfo_gs)); \
      0;  })
 #endif /* end __aarch64__ */
+
+#ifdef __riscv
+
+// Taken from glibc-2.27.9000/sysdeps/riscv/nptl/tls.h
+
+register void *__thread_self asm ("tp");
+# define READ_THREAD_POINTER() ({ __thread_self; })
+
+/* The thread pointer tp points to the end of the TCB.
+   The pthread_descr structure is immediately in front of the TCB.  */
+# define TLS_TCB_OFFSET	0
+
+/* Alignment requirements for the TCB.  */
+# define TLS_TCB_ALIGN          1776 // __alignof__ (struct pthread)
+
+/* This is the size of the TCB.  Because our TCB is before the thread
+   pointer, we don't need this.  */
+# define TLS_TCB_SIZE		0
+
+/* This is the size we need before TCB - actually, it includes the TCB.  */
+# define TLS_PRE_TCB_SIZE \
+  (1776						      \
+   + ((16 + TLS_TCB_ALIGN - 1) & ~(TLS_TCB_ALIGN - 1))) // sizeof (tcbhead_t) == 16
+
+/* Return the thread descriptor for the current thread.  */
+# define THREAD_SELF \
+ ((READ_THREAD_POINTER ()			     \
+		      - TLS_TCB_OFFSET - TLS_PRE_TCB_SIZE))
+
+# define tls_get_thread_area(uinfo, myinfo_gs)                         \
+  ({ myinfo_gs = READ_THREAD_POINTER();                                \
+     myinfo_gs = THREAD_SELF;                                          \
+     *(unsigned long int *)&(((struct user_desc *)uinfo)->base_addr)   \
+       = myinfo_gs;                                                    \
+     myinfo_gs; })
+# define tls_set_thread_area(uinfo, myinfo_gs)                          \
+  ({ myinfo_gs =                                                        \
+       *(unsigned long int *)&(((struct user_desc *)uinfo)->base_addr); \
+     myinfo_gs = myinfo_gs + TLS_TCB_OFFSET;                            \
+     __thread_self = myinfo_gs;                                         \
+     0;  })
+#endif // ifdef __riscv
+
 #endif /* TLSUTIL_H */

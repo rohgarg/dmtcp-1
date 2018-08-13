@@ -202,7 +202,7 @@ extern int mtcp_sys_errno;
 // FIXME:  Now that we're introducing syscall-aarch64.S, we should abandon this.
 // # include "sysdep-aarch64.h"
 # elif defined(__riscv)
-// TODO
+# include "sysdep/sysdep-riscv.h"
 # else // ifdef __i386__
 #  error "Missing sysdep.h file for this architecture."
 # endif /* end __arm__ */
@@ -320,8 +320,10 @@ struct linux_dirent {
                               offset / 4096)
 # elif defined(__aarch64__)
 #  define mtcp_sys_mmap(args ...) (void *)mtcp_inline_syscall(mmap, 6, args)
+# elif defined(__riscv)
+#  define mtcp_sys_mmap(args ...) (void *)mtcp_inline_syscall(mmap, 6, args)
 # else // if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
-#  error "getrlimit kernel call not implemented in this architecture"
+#  error "mmap kernel call not implemented in this architecture"
 # endif // if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
 # define mtcp_sys_mremap(args ...)                                        \
                                       (void *)mtcp_inline_syscall(mremap, \
@@ -352,6 +354,8 @@ struct linux_dirent {
 // As of glibc-2.18, readlink() has been replaced by readlinkat()
 // glibc includes checks for old call, except in Aarch64
 #  define mtcp_sys_readlink(args ...) mtcp_inline_syscall(readlinkat, 3, args)
+# elif defined(__riscv)
+#  define mtcp_sys_readlink(args ...) mtcp_inline_syscall(readlinkat, 3, args)
 # else // if defined(__aarch64__)
 #  define mtcp_sys_readlink(args ...) mtcp_inline_syscall(readlink, 3, args)
 # endif // if defined(__aarch64__)
@@ -364,6 +368,8 @@ struct linux_dirent {
 /* EABI ARM exclusively uses newer ugetrlimit kernel API, and not getrlimit */
 #  define mtcp_sys_getrlimit(args ...) mtcp_inline_syscall(ugetrlimit, 2, args)
 # elif defined(__aarch64__)
+#  define mtcp_sys_getrlimit(args ...) mtcp_inline_syscall(getrlimit, 2, args)
+# elif defined(__riscv)
 #  define mtcp_sys_getrlimit(args ...) mtcp_inline_syscall(getrlimit, 2, args)
 # else // if defined(__i386__) || defined(__x86_64__) || defined(__aarch64__)
 #  error "getrlimit kernel call not implemented in this architecture"
@@ -384,6 +390,12 @@ struct linux_dirent {
 # define mtcp_sys_fcntl2(args ...)      mtcp_inline_syscall(fcntl, 2, args)
 # define mtcp_sys_fcntl3(args ...)      mtcp_inline_syscall(fcntl, 3, args)
 # if defined(__aarch64__)
+#  define mtcp_sys_mkdir(args ...)                                   \
+                                        mtcp_inline_syscall(mkdirat, \
+                      3,                                             \
+                      AT_FDCWD,                                      \
+                      args)
+# elif defined(__riscv)
 #  define mtcp_sys_mkdir(args ...)                                   \
                                         mtcp_inline_syscall(mkdirat, \
                       3,                                             \
