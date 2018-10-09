@@ -522,6 +522,11 @@ TcpConnection::drain()
     markExternalConnect();
   }
 
+  if ((_sockType & 077) == SOCK_DGRAM) {
+    JTRACE("No draining for datagram socket")(_fds[0])(id());
+    return;
+  }
+
   // Non blocking connect; need to hang around until it is writable.
   if (_type == TCP_CONNECT_IN_PROGRESS) {
     int retval;
@@ -757,8 +762,10 @@ TcpConnection::postRestart()
       JWARNING(_real_bind(_fds[0], (sockaddr *)&_bindAddr, _bindAddrlen) != -1)
         (JASSERT_ERRNO);
     }
-    JTRACE("registerOutgoing") (id()) (_remotePeerId) (_fds[0]);
-    ConnectionRewirer::instance().registerOutgoing(_remotePeerId, this);
+    if (_bindAddrlen == 0) {
+      JTRACE("registerOutgoing") (id()) (_remotePeerId) (_fds[0]);
+      ConnectionRewirer::instance().registerOutgoing(_remotePeerId, this);
+    }
     break;
 
     // case TCP_EXTERNAL_CONNECT:
