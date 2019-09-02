@@ -134,7 +134,8 @@ ThreadSync::initMotherOfAll()
 void
 ThreadSync::acquireLocks()
 {
-  JASSERT(WorkerState::currentState() == WorkerState::PRESUSPEND);
+  JASSERT(WorkerState::currentState() == WorkerState::RUNNING ||
+          WorkerState::currentState() == WorkerState::PRESUSPEND);
 
   /* TODO: We should introduce the notion of lock ranks/priorities for all
    * these locks to prevent future deadlocks due to rank violation.
