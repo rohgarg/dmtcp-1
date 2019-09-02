@@ -290,6 +290,9 @@ FileConnList::prepareShmList()
           strstr(area.name, "dmtcpSharedArea") != NULL ||
           strstr(area.name, "synchronization-log") != NULL ||
           strstr(area.name, "infiniband") != NULL ||
+          strstr(area.name, "xpmem") != NULL ||
+          strstr(area.name, "hugetlbfs") != NULL ||
+          strstr(area.name, "/dev/kgni") != NULL ||
           strstr(area.name, "synchronization-read-log") != NULL) {
         continue;
       }
@@ -486,6 +489,10 @@ FileConnList::scanForPreExisting()
        * a pre-existing device and ignore it for checkpoint-restart.
        */
       continue;
+    } else if (Util::strStartsWith(device.c_str(), "/dev/kgni") ||
+               Util::strStartsWith(device.c_str(), "/dev/kdreg") ||
+               Util::strStartsWith(device.c_str(), "/dev/xpmem")) {
+      continue;
     } else if (Util::strStartsWith(device.c_str(), "/") &&
                !Util::isPseudoTty(device.c_str())) {
       if (isRegularFile) {
@@ -563,7 +570,10 @@ FileConnList::processFileConnection(int fd,
   JASSERT(fstat(fd, &statbuf) == 0);
 
   if (strstr(device.c_str(), "infiniband/uverbs") ||
-      strstr(device.c_str(), "uverbs-event")) {
+      strstr(device.c_str(), "uverbs-event") ||
+      strstr(device.c_str(), "/dev/kgni") ||
+      strstr(device.c_str(), "/dev/kdreg") ||
+      strstr(device.c_str(), "/dev/xpmem")) {
     return;
   }
 

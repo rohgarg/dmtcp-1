@@ -75,6 +75,10 @@ _isBlacklistedFile(string &path)
   if ((Util::strStartsWith(path.c_str(), "/dev/") &&
        !Util::strStartsWith(path.c_str(), "/dev/shm/")) ||
       Util::strStartsWith(path.c_str(), "/proc/") ||
+      Util::strStartsWith(path.c_str(), "/sys/") ||  // Ignore cgroup files
+      Util::strStartsWith(path.c_str(), "/dev/xpmem") ||  // Ignore xpmem
+      Util::strStartsWith(path.c_str(), "/dev/kgni") ||  // Ignore kgni
+      Util::strStartsWith(path.c_str(), "/dev/kdreg") ||  // Ignore kdreg
       Util::strStartsWith(path.c_str(), dmtcp_get_tmpdir())) {
     return true;
   }
@@ -301,6 +305,10 @@ FileConnection::refill(bool isRestart)
     return;
   }
   if (strstr(_path.c_str(), "infiniband/uverbs") ||
+      Util::strStartsWith(_path.c_str(), "/sys/")  || // Ignore cgroup files
+      Util::strStartsWith(_path.c_str(), "/dev/xpmem") ||  // Ignore xpmem
+      Util::strStartsWith(_path.c_str(), "/dev/kgni") ||  // Ignore kgni
+      Util::strStartsWith(_path.c_str(), "/dev/kdreg") ||  // Ignore kdreg
       strstr(_path.c_str(), "uverbs-event")) {
     return;
   }
