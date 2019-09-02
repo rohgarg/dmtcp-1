@@ -49,7 +49,7 @@ class KeyValue
 
     void *data() { return _data; }
 
-    size_t len() { return _len; }
+    size_t len() const { return _len; }
 
     bool operator<(const KeyValue &that) const
     {
@@ -74,6 +74,8 @@ class KeyValue
     size_t _len;
 };
 
+typedef map<KeyValue, KeyValue *>KeyValueMap;
+
 class LookupService
 {
   public:
@@ -81,6 +83,8 @@ class LookupService
 
     ~LookupService() { reset(); }
 
+    string getSummaryStats();
+    const KeyValueMap* getMap(string name);
     void reset();
     void registerData(const DmtcpMessage &msg, const void *data);
     void respondToQuery(jalib::JSocket &remote,
@@ -97,8 +101,9 @@ class LookupService
                          const DmtcpMessage &msg);
 
   private:
-    typedef map<KeyValue, KeyValue *>KeyValueMap;
     typedef map<string, KeyValueMap>::iterator MapIterator;
+    typedef map<string, KeyValueMap>::const_iterator ConstMapIterator;
+
     void addKeyValue(string id,
                      const void *key,
                      size_t keyLen,

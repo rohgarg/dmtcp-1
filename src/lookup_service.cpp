@@ -25,6 +25,47 @@
 
 using namespace dmtcp;
 
+string
+LookupService::getSummaryStats()
+{
+  ostringstream o;
+  size_t totalKeys = 0;
+  size_t totalSize = 0;
+  for (ConstMapIterator i = _maps.begin(); i != _maps.end(); i++) {
+    const KeyValueMap &kvmap = i->second;
+    o << i->first  << ": " << kvmap.size();
+    totalKeys += kvmap.size();
+    KeyValueMap::const_iterator it;
+    for (it = kvmap.begin(); it != kvmap.end(); it++) {
+      const KeyValue &k = it->first;
+      KeyValue *v = it->second;
+      size_t kvmapSize = ((k.len() + v->len()) * kvmap.size());
+      totalSize += kvmapSize;
+      o << " (keyLen: " << k.len() << ", valLen: " << v->len() << ")";
+      o << " totalSize: " << kvmapSize  << " (" << kvmapSize / 1024 << " KB)";
+      break;
+    }
+  }
+  ostringstream o2;
+  o2 << "Nameservice database stats:"
+     << "\n#databases:  " << _maps.size()
+     << "\n#total keys: " << totalKeys
+     << "\n#total size: " << totalSize << " (" << totalSize / 1024 << " KB)"
+     << "\nIndividual database stats:\n"
+     << o.str();
+  return o2.str();
+}
+
+const KeyValueMap*
+LookupService::getMap(string mapName)
+{
+  auto map = _maps.find(mapName);
+  if (map != _maps.end()) {
+    return &_maps[mapName];
+  }
+  return NULL;
+}
+
 void
 LookupService::reset()
 {
