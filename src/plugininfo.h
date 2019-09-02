@@ -44,7 +44,7 @@ class PluginInfo
 
     void eventHook(const DmtcpEvent_t event, DmtcpEventData_t *data);
 
-    void processBarriers();
+    void processBarriers(const void *data = NULL);
 
     const string pluginName;
     const string authorName;
@@ -64,7 +64,7 @@ class PluginInfo
                const vector<BarrierInfo *> &_resumeBarriers,
                const vector<BarrierInfo *> &_restartBarriers);
 
-    void processBarrier(BarrierInfo *barrier);
+    void processBarrier(BarrierInfo *barrier, const void *data = NULL);
     void waitForBarrier(BarrierInfo *barrier);
 };
 }

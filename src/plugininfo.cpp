@@ -102,11 +102,12 @@ PluginInfo::eventHook(const DmtcpEvent_t event, DmtcpEventData_t *data)
 }
 
 void
-PluginInfo::processBarriers()
+PluginInfo::processBarriers(const void *data)
 {
-  if (WorkerState::currentState() == WorkerState::PRESUSPEND) {
+  if (WorkerState::currentState() == WorkerState::RUNNING ||
+      WorkerState::currentState() == WorkerState::PRESUSPEND) {
     for (size_t i = 0; i < preSuspendBarriers.size(); i++) {
-      processBarrier(preSuspendBarriers[i]);
+      processBarrier(preSuspendBarriers[i], data);
     }
   } else if (WorkerState::currentState() == WorkerState::CHECKPOINTING) {
     for (size_t i = 0; i < preCkptBarriers.size(); i++) {
@@ -126,7 +127,7 @@ PluginInfo::processBarriers()
 }
 
 void
-PluginInfo::processBarrier(BarrierInfo *barrier)
+PluginInfo::processBarrier(BarrierInfo *barrier, const void *data)
 {
   JTIMER_NOPRINT(barrier);
 
@@ -148,7 +149,12 @@ PluginInfo::processBarrier(BarrierInfo *barrier)
 
   JTIMER_START(barrier);
 
-  barrier->callback();
+  if (barrier->callback) {
+    barrier->callback();
+  }
+  if (barrier->callbackMana) {
+    barrier->callbackMana(data);
+  }
 
   JTIMER_STOP(barrier);
   JTIMER_GETDELTA(barrier->cbExecTime, barrier);

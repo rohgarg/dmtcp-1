@@ -148,10 +148,10 @@ PluginManager::registerBarriersWithCoordinator()
 }
 
 void
-PluginManager::processPreSuspendBarriers()
+PluginManager::processPreSuspendBarriers(const void *data)
 {
   for (size_t i = 0; i < pluginManager->pluginInfos.size(); i++) {
-    pluginManager->pluginInfos[i]->processBarriers();
+    pluginManager->pluginInfos[i]->processBarriers(data);
   }
 }
 

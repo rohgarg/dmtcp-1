@@ -41,6 +41,7 @@ class BarrierInfo
     BarrierInfo(string _pluginName, const DmtcpBarrier &barrier)
       : type(barrier.type),
       callback(barrier.callback),
+      callbackMana(barrier.callbackMana),
       id(barrier.id),
       pluginName(_pluginName)
     {}
@@ -77,6 +78,7 @@ class BarrierInfo
 
     const DmtcpBarrierType type;
     void (*callback)();
+    void (*callbackMana)(const void* );
     const string id;
     const string pluginName;
 #ifdef TIMING

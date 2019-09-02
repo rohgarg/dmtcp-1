@@ -104,6 +104,7 @@ typedef struct {
   DmtcpBarrierType type;
   void (*callback)();
   const char *id;
+  void (*callbackMana)(const void*); // Used for pre-suspend barriers for MANA
 } DmtcpBarrier;
 
 typedef void (*HookFunctionPtr_t)(DmtcpEvent_t, DmtcpEventData_t *);

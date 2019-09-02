@@ -420,24 +420,33 @@ DmtcpWorker::waitForPreSuspendMessage()
   JTRACE("waiting for PRESUSPEND message");
 
   DmtcpMessage msg;
-  CoordinatorAPI::recvMsgFromCoordinator(&msg);
+  do {
+    void *extraData = NULL;
+    CoordinatorAPI::recvMsgFromCoordinator(&msg, &extraData);
 
-  // Before validating message; make sure we are not exiting.
-  if (exitInProgress) {
-    ckptThreadPerformExit();
-  }
+    // Before validating message; make sure we are not exiting.
+    if (exitInProgress) {
+      ckptThreadPerformExit();
+    }
 
-  msg.assertValid();
+    msg.assertValid();
 
-  JASSERT(msg.type == DMT_DO_PRESUSPEND) (msg.type);
+    if (msg.type == DMT_DO_PRESUSPEND) {
+      JTRACE("Procesing pre-suspend");
+      WorkerState::setCurrentState(WorkerState::PRESUSPEND);
+      // Coordinator sends some computation information along with the SUSPEND
+      // message. Extracting that.
+      SharedData::updateGeneration(msg.compGroup.computationGeneration());
+      JASSERT(SharedData::getCompId() == msg.compGroup.upid())
+        (SharedData::getCompId()) (msg.compGroup);
 
-  // Coordinator sends some computation information along with the SUSPEND
-  // message. Extracting that.
-  SharedData::updateGeneration(msg.compGroup.computationGeneration());
-  JASSERT(SharedData::getCompId() == msg.compGroup.upid())
-    (SharedData::getCompId()) (msg.compGroup);
+      exitAfterCkpt = msg.exitAfterCkpt;
 
-  exitAfterCkpt = msg.exitAfterCkpt;
+      JTRACE("Received pre-suspend query from coordinator");
+      PluginManager::processPreSuspendBarriers(extraData);
+      JALLOC_HELPER_FREE(extraData);
+    }
+  } while (msg.type == DMT_DO_PRESUSPEND);
 }
 
 void
@@ -490,11 +499,6 @@ DmtcpWorker::waitForCheckpointRequest()
   WorkerState::setCurrentState(WorkerState::RUNNING);
 
   waitForPreSuspendMessage();
-
-  JTRACE("Procesing pre-suspend");
-  WorkerState::setCurrentState(WorkerState::PRESUSPEND);
-
-  PluginManager::processPreSuspendBarriers();
 
   JTRACE("Waiting for DMT_DO_SUSPEND message");
   CoordinatorAPI::sendMsgToCoordinator(DmtcpMessage(DMT_OK));
