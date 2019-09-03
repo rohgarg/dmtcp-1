@@ -19,6 +19,7 @@
  *  <http://www.gnu.org/licenses/>.                                         *
  ****************************************************************************/
 
+#include <sys/personality.h>
 #include <sys/resource.h>
 #include "../jalib/jassert.h"
 #include "../jalib/jconvert.h"
@@ -610,6 +611,7 @@ main(int argc, char **argv)
 
   // run the user program
   char **newArgv = NULL;
+  personality(ADDR_NO_RANDOMIZE);
   if (testScreen(argv, &newArgv)) {
     execvp(newArgv[0], newArgv);
   } else {
