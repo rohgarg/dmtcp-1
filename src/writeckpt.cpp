@@ -227,7 +227,10 @@ mtcp_writememoryareas(int fd)
       continue;
     }
 
-    if (Util::strStartsWith(area.name, DEV_ZERO_DELETED_STR) ||
+    if (dmtcp_skip_memory_region_ckpting(&area) == 1) {
+      JTRACE("Skipping region as requested by the plugin");
+      continue;
+    } else if (Util::strStartsWith(area.name, DEV_ZERO_DELETED_STR) ||
         Util::strStartsWith(area.name, DEV_NULL_DELETED_STR)) {
       /* If the process has an area labeled as "/dev/zero (deleted)", we mark
        *   the area as Anonymous and save the contents to the ckpt image file.
@@ -454,7 +457,7 @@ writememoryarea(int fd, Area *area, int stack_was_seen)
     JTRACE("skipping over memory special section")
       (area->name) (addr) (area->size);
   } else if ( area->__addr == ProcessInfo::instance().vdsoStart() ) {
-    //vDSO issue:
+    // vDSO issue:
     //    As always, we never want to save the vdso section.  We will use
     //  the vdso section code provided by the kernel on restart.  Further,
     //  the user code on restart has already been initialized and so it
@@ -475,7 +478,7 @@ writememoryarea(int fd, Area *area, int stack_was_seen)
     //  be saving the original vdso section (which is wrong), and we would
     //  be failing to save the user's memory that was restored into the
     //  location labelled by the kernel's "[vdso]" label.  This last
-    //  case is even worse, since we have now failed to restore some user data. 
+    //  case is even worse, since we have now failed to restore some user data.
     //    This was observed to happen in RHEL 6.6.  The solution is to
     //  trust DMTCP for the vdso location (as in the if condition above),
     //  and not to trust the kernel's "[vdso]" label.
