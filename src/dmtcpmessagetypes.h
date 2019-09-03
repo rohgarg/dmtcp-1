@@ -57,6 +57,7 @@ enum DmtcpMessageType {
   DMT_USER_CMD_RESULT,       // on reply coordinator -> dmtcp_command
 
   DMT_DO_PRESUSPEND,         // when coordinator wants slave to suspend
+  DMT_PRESUSPEND_RESPONSE,
   DMT_DO_SUSPEND,            // when coordinator wants slave to suspend
   DMT_DO_CHECKPOINT,         // when coordinator wants slave to checkpoint
 
