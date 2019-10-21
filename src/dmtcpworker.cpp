@@ -444,7 +444,10 @@ DmtcpWorker::waitForPreSuspendMessage()
 
       JTRACE("Received pre-suspend query from coordinator");
       PluginManager::processPreSuspendBarriers(extraData);
-      JALLOC_HELPER_FREE(extraData);
+      if (extraData) {
+        JALLOC_HELPER_FREE(extraData);
+      }
+      CoordinatorAPI::sendMsgToCoordinator(DmtcpMessage(DMT_OK));
     }
   } while (msg.type == DMT_DO_PRESUSPEND);
 }
